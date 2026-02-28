@@ -5,12 +5,24 @@ import pyautogui
 from PIL import ImageGrab
 from collections import deque
 import threading
-from pynput import keyboard
+from pynput import keyboard, mouse
+import json
 import tkinter as tk
 import os
+import sys
+import signal
 
 # ==========================
-#  CONFIGURACION DEL AREA DE JUEGO
+#  MANEJADOR DE CTRL+C
+# ==========================
+def signal_handler(sig, frame):
+    print("\n\n[!] Bot cancelado por el usuario (Ctrl+C)")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
+# ==========================
+#  CONFIGURACION DEL AREA DE JUEGO (valores por defecto)
 # ==========================
 GAME_X1, GAME_Y1 = 394, 460
 GAME_X2, GAME_Y2 = 1100, 838
@@ -27,6 +39,102 @@ SPRITES_DIR = os.path.join(BASE_DIR, "sprites")
 PATH_OJO_MISIONERO = os.path.join(SPRITES_DIR, "misionero.png")
 PATH_OJO_CANIBAL   = os.path.join(SPRITES_DIR, "canibal.png")
 PATH_OJO_BALSA     = os.path.join(SPRITES_DIR, "balsa.png")
+
+# Archivo de configuración para guardar las coordenadas
+CONFIG_FILE = os.path.join(BASE_DIR, "area_config.json")
+
+# ==========================
+#  FUNCIONES DE CONFIGURACION
+# ==========================
+def guardar_configuracion(x1, y1, x2, y2):
+    """Guarda la configuración del área en un archivo JSON"""
+    config = {
+        'GAME_X1': x1,
+        'GAME_Y1': y1,
+        'GAME_X2': x2,
+        'GAME_Y2': y2
+    }
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=4)
+        print(f"[+] Configuracion guardada en {CONFIG_FILE}")
+        return True
+    except Exception as e:
+        print(f"[-] Error al guardar configuracion: {e}")
+        return False
+
+def cargar_configuracion():
+    """Carga la configuración del área desde el archivo JSON"""
+    global GAME_X1, GAME_Y1, GAME_X2, GAME_Y2, GAME_W, GAME_H, MITAD_X
+    if not os.path.exists(CONFIG_FILE):
+        return False
+    
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+        
+        GAME_X1 = config['GAME_X1']
+        GAME_Y1 = config['GAME_Y1']
+        GAME_X2 = config['GAME_X2']
+        GAME_Y2 = config['GAME_Y2']
+        GAME_W = GAME_X2 - GAME_X1
+        GAME_H = GAME_Y2 - GAME_Y1
+        MITAD_X = GAME_W // 2
+        
+        print(f"[+] Configuracion cargada: ({GAME_X1},{GAME_Y1}) - ({GAME_X2},{GAME_Y2})")
+        return True
+    except Exception as e:
+        print(f"[-] Error al cargar configuracion: {e}")
+        return False
+
+# ==========================
+#  CALIBRACION CON 2 CLICS
+# ==========================
+def calibrar_area_con_clics():
+    """Calibra el área de juego con 2 clics del ratón"""
+    print("\n" + "="*50)
+    print("CALIBRACION DEL AREA DE JUEGO")
+    print("="*50)
+    print("\nInstrucciones:")
+    print("  1. Haz clic en la esquina SUPERIOR IZQUIERDA del area de juego")
+    print("  2. Haz clic en la esquina INFERIOR DERECHA del area de juego")
+    print("\nEsperando clics...")
+    
+    coords = []
+    
+    def on_click(x, y, button, pressed):
+        if button == mouse.Button.left and pressed:
+            coords.append((x, y))
+            print(f"   Clic {len(coords)} registrado en: ({int(x)}, {int(y)})")
+            if len(coords) >= 2:
+                return False
+    
+    with mouse.Listener(on_click=on_click) as listener:
+        listener.join()
+    
+    if len(coords) < 2:
+        print("\n[-] No se registraron los 2 clics.")
+        return False
+    
+    x1, y1 = coords[0]
+    x2, y2 = coords[1]
+    
+    nx1 = min(x1, x2)
+    ny1 = min(y1, y2)
+    nx2 = max(x1, x2)
+    ny2 = max(y1, y2)
+    
+    print(f"\n[+] Area calibrada: ({nx1},{ny1}) - ({nx2},{ny2})")
+    print(f"    Ancho: {nx2-nx1} px, Alto: {ny2-ny1} px")
+    
+    global GAME_X1, GAME_Y1, GAME_X2, GAME_Y2, GAME_W, GAME_H, MITAD_X
+    GAME_X1, GAME_Y1, GAME_X2, GAME_Y2 = nx1, ny1, nx2, ny2
+    GAME_W = GAME_X2 - GAME_X1
+    GAME_H = GAME_Y2 - GAME_Y1
+    MITAD_X = GAME_W // 2
+    
+    guardar_configuracion(GAME_X1, GAME_Y1, GAME_X2, GAME_Y2)
+    return True
 
 # ==========================
 #  UMBRALES DE CONFIANZA
@@ -168,7 +276,7 @@ def rel_a_abs(x_rel, y_rel):
     return GAME_X1 + x_rel, GAME_Y1 + y_rel
 
 # ==========================
-#  FUNCION DE CLIC
+#  FUNCION DE CLIC MEJORADA
 # ==========================
 def click(posiciones_rel, count=1, offset=5, desc="", es_balsa=False, es_misionero=False, es_canibal=False):
     for i in range(count):
@@ -188,8 +296,7 @@ def click(posiciones_rel, count=1, offset=5, desc="", es_balsa=False, es_misione
             else:
                 x_abs += offset
                 y_abs += offset
-            
-            # Mover el mouse a la posición antes de hacer clic (más fiable)
+  
             pyautogui.moveTo(x_abs, y_abs, duration=0.1)
             time.sleep(0.1)
             pyautogui.click()
@@ -245,7 +352,6 @@ def get_game_state(mensaje=""):
         }
     }
     
-    print(f"  ({state['derecha'][0]},{state['derecha'][1]},{state['boat_side']})")
     return state
 
 # ==========================
@@ -347,7 +453,7 @@ def bajar_todos_los_personajes(move, to_bank, estado_actual):
     persons = move_map.get(move, [])
     temp_state = estado_actual
     
-    for intento in range(2):  
+    for intento in range(3):
         balsa_m_list = list(temp_state['positions_rel'].get('balsa_m', []))
         balsa_c_list = list(temp_state['positions_rel'].get('balsa_c', []))
         personajes_balsa = list(temp_state['personajes_balsa'])
@@ -372,7 +478,6 @@ def bajar_todos_los_personajes(move, to_bank, estado_actual):
                 click_pos = [personajes_balsa[0]]
                 removed_pos = personajes_balsa.pop(0)
             else:
-                print(f"Error: No hay personajes")
                 break
             
             if typ == 'm':
@@ -382,7 +487,6 @@ def bajar_todos_los_personajes(move, to_bank, estado_actual):
             
             time.sleep(0.5)
             
-        # Verificar si ya no hay personajes en balsa
         temp_state = get_game_state()
         if temp_state['total_balsa'] == 0:
             break
@@ -408,7 +512,6 @@ def execute_move(move, estado_actual, estado_esperado_despues):
     
     persons = move_map.get(move, [])
     
-    # SUBIR
     for typ, idx in persons:
         pos = encontrar_personaje(estado_actual, typ, idx, from_bank)
         if pos:
@@ -422,16 +525,14 @@ def execute_move(move, estado_actual, estado_esperado_despues):
     
     time.sleep(1)
     
-    # CRUZAR
     if estado_actual.get('balsa_real'):
         click([estado_actual['balsa_real']], es_balsa=True)
     else:
         approx = (3 * GAME_W // 4, GAME_H // 2) if estado_actual['boat_side'] == 0 else (GAME_W // 4, GAME_H // 2)
         click([approx], es_balsa=True)
     
-    time.sleep(3) 
+    time.sleep(3)
     
-    # BAJAR
     estado_final = bajar_todos_los_personajes(move, to_bank, get_game_state())
     
     if verificar_estado(estado_esperado_despues, estado_final, ""):
@@ -492,7 +593,7 @@ def visualizar_deteccion():
 # ==========================
 def ejecutar_bot():
     print("\n" + "="*50)
-    print("BOT INICIADO")
+    print("BOT INICIADO - Presiona Ctrl+C para cancelar")
     print("="*50)
     mostrar_area(0.8)
     
@@ -568,43 +669,48 @@ def probar_deteccion():
         visualizar_deteccion()
 
 # ==========================
-#  CALIBRAR
-# ==========================
-def calibrar_area():
-    print("\nCalibracion:")
-    time.sleep(2)
-    x1, y1 = pyautogui.position()
-    print(f"Sup-Izq: ({x1},{y1})")
-    time.sleep(2)
-    x2, y2 = pyautogui.position()
-    print(f"Inf-Der: ({x2},{y2})")
-    print(f"Area: {x2-x1}x{y2-y1} px")
-
-# ==========================
-#  MENU
+#  MENU PRINCIPAL
 # ==========================
 def main():
     global plantillas
     print("="*60)
     print("BOT MISIONEROS Y CANIBALES")
     print("="*60)
+    print("\nPresiona Ctrl+C en cualquier momento para cancelar la ejecucion")
     
+    # Intentar cargar configuracion del JSON (si existe)
+    if os.path.exists(CONFIG_FILE):
+        if not cargar_configuracion():
+            print("\n[-] Error en el archivo de configuracion. Se requiere recalibrar.")
+            if not calibrar_area_con_clics():
+                print("\n[-] Calibracion fallida. Saliendo...")
+                return
+    else:
+        print("\n[!] No hay archivo de configuracion. Es necesario calibrar.")
+        if not calibrar_area_con_clics():
+            print("\n[-] Calibracion fallida. Saliendo...")
+            return
+    
+    # Cargar plantillas
     plantillas = cargar_todas()
     if plantillas is None:
         input("Enter para salir...")
         return
     
     while True:
-        print("\n1. Ejecutar (ALT+X)")
+        print("\n" + "-"*40)
+        print("MENU PRINCIPAL")
+        print("-"*40)
+        print("1. Ejecutar bot (ALT+X)")
         print("2. Probar deteccion")
-        print("3. Visualizar")
-        print("4. Calibrar")
+        print("3. Visualizar deteccion")
+        print("4. Recalibrar area de juego")
         print("5. Salir")
         
-        op = input("Opcion: ").strip()
+        op = input("\nOpcion: ").strip()
         
         if op == '1':
-            print("\nBot listo. Presiona ALT+X")
+            print("\nBot listo. Presiona ALT+X para ejecutar")
             listener = keyboard.Listener(on_press=on_press, on_release=on_release)
             listener.start()
             listener.join()
@@ -614,10 +720,16 @@ def main():
         elif op == '3':
             visualizar_deteccion()
         elif op == '4':
-            calibrar_area()
-            input("Enter para continuar...")
+            if calibrar_area_con_clics():
+                print("\n[+] Calibracion completada.")
+            else:
+                print("\n[-] Calibracion cancelada.")
+            input("\nPresiona Enter para continuar...")
         elif op == '5':
+            print("\nHasta luego!")
             break
+        else:
+            print("Opcion no valida")
 
 if __name__ == "__main__":
     main()
