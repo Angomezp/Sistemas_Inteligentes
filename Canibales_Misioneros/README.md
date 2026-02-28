@@ -22,6 +22,17 @@ pip install opencv-python numpy pyautogui pillow pynput
 
 Nota: `tkinter` viene incluido en la mayoría de las instalaciones de Python en Windows.
 
+**Archivo de configuración**
+
+El script crea y utiliza `area_config.json` en la carpeta `Canibales_Misioneros/` para almacenar las coordenadas del área de juego calibrada. Este archivo suele ser generado localmente por la opción de `calibrar` del menú y puede estar marcado como no versionado (no incluido en git) para evitar subir coordenadas específicas de pantalla.
+
+Si abres el repositorio por primera vez:
+
+- Ejecuta la opción 4 (calibrar) en el menú del script para crear `area_config.json` con las coordenadas correctas de tu pantalla.
+- El archivo se guarda automáticamente tras la calibración; si no existe, el script usa valores por defecto que pueden requerir ajuste.
+
+Esto evita tener que calibrar manualmente cada vez y mantiene la configuración local separada del código fuente.
+
 **Cómo usar**
 
 1. Abrir el juego en pantalla y asegurarse de que la zona del juego está visible.
