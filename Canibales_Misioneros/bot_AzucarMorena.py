@@ -21,9 +21,12 @@ MITAD_X = GAME_W // 2
 # ==========================
 #  RUTAS A LAS PLANTILLAS
 # ==========================
-PATH_OJO_MISIONERO = "sprites/misionero.png"
-PATH_OJO_CANIBAL   = "sprites/canibal.png"
-PATH_OJO_BALSA     = "sprites/balsa.png"
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+SPRITES_DIR = os.path.join(BASE_DIR, "sprites")
+
+PATH_OJO_MISIONERO = os.path.join(SPRITES_DIR, "misionero.png")
+PATH_OJO_CANIBAL   = os.path.join(SPRITES_DIR, "canibal.png")
+PATH_OJO_BALSA     = os.path.join(SPRITES_DIR, "balsa.png")
 
 # ==========================
 #  UMBRALES DE CONFIANZA
@@ -186,7 +189,10 @@ def click(posiciones_rel, count=1, offset=5, desc="", es_balsa=False, es_misione
                 x_abs += offset
                 y_abs += offset
             
-            pyautogui.click(x_abs, y_abs)
+            # Mover el mouse a la posición antes de hacer clic (más fiable)
+            pyautogui.moveTo(x_abs, y_abs, duration=0.1)
+            time.sleep(0.1)
+            pyautogui.click()
             time.sleep(0.5)
         else:
             break
@@ -239,7 +245,7 @@ def get_game_state(mensaje=""):
         }
     }
     
-    
+    print(f"  ({state['derecha'][0]},{state['derecha'][1]},{state['boat_side']})")
     return state
 
 # ==========================
@@ -341,40 +347,45 @@ def bajar_todos_los_personajes(move, to_bank, estado_actual):
     persons = move_map.get(move, [])
     temp_state = estado_actual
     
-    balsa_m_list = list(temp_state['positions_rel'].get('balsa_m', []))
-    balsa_c_list = list(temp_state['positions_rel'].get('balsa_c', []))
-    personajes_balsa = list(temp_state['personajes_balsa'])
-    
-    for idx, (typ, person_idx) in enumerate(persons):
-        if typ == 'm':
-            current_list = balsa_m_list
-        else:
-            current_list = balsa_c_list
-        
-        if len(current_list) > 0:
-            click_pos = [current_list[0]]
-            removed_pos = current_list.pop(0)
-            for i, pos in enumerate(personajes_balsa):
-                if pos == removed_pos:
-                    personajes_balsa.pop(i)
-                    break
-        elif len(personajes_balsa) > 0:
-            click_pos = [personajes_balsa[0]]
-            personajes_balsa.pop(0)
-        else:
-            print(f"Error: No hay personajes")
-            break
-        
-        if typ == 'm':
-            click(click_pos, es_misionero=True)
-        else:
-            click(click_pos, es_canibal=True)
-        
-        time.sleep(0.5)
-        temp_state = get_game_state()
+    for intento in range(2):  
         balsa_m_list = list(temp_state['positions_rel'].get('balsa_m', []))
         balsa_c_list = list(temp_state['positions_rel'].get('balsa_c', []))
         personajes_balsa = list(temp_state['personajes_balsa'])
+        
+        if len(personajes_balsa) == 0:
+            break
+            
+        for idx, (typ, person_idx) in enumerate(persons):
+            if typ == 'm':
+                current_list = balsa_m_list
+            else:
+                current_list = balsa_c_list
+            
+            if len(current_list) > 0:
+                click_pos = [current_list[0]]
+                removed_pos = current_list.pop(0)
+                for i, pos in enumerate(personajes_balsa):
+                    if pos == removed_pos:
+                        personajes_balsa.pop(i)
+                        break
+            elif len(personajes_balsa) > 0:
+                click_pos = [personajes_balsa[0]]
+                removed_pos = personajes_balsa.pop(0)
+            else:
+                print(f"Error: No hay personajes")
+                break
+            
+            if typ == 'm':
+                click(click_pos, es_misionero=True)
+            else:
+                click(click_pos, es_canibal=True)
+            
+            time.sleep(0.5)
+            
+        # Verificar si ya no hay personajes en balsa
+        temp_state = get_game_state()
+        if temp_state['total_balsa'] == 0:
+            break
         time.sleep(0.5)
     
     return get_game_state()
@@ -411,14 +422,14 @@ def execute_move(move, estado_actual, estado_esperado_despues):
     
     time.sleep(1)
     
-    # CRUZAR (tiempo reducido a 2 segundos)
+    # CRUZAR
     if estado_actual.get('balsa_real'):
         click([estado_actual['balsa_real']], es_balsa=True)
     else:
         approx = (3 * GAME_W // 4, GAME_H // 2) if estado_actual['boat_side'] == 0 else (GAME_W // 4, GAME_H // 2)
         click([approx], es_balsa=True)
     
-    time.sleep(3)
+    time.sleep(3) 
     
     # BAJAR
     estado_final = bajar_todos_los_personajes(move, to_bank, get_game_state())
