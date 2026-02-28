@@ -10,19 +10,9 @@ import json
 import tkinter as tk
 import os
 import sys
-import signal
 
 # ==========================
-#  MANEJADOR DE CTRL+C
-# ==========================
-def signal_handler(sig, frame):
-    print("\n\n[!] Bot cancelado por el usuario (Ctrl+C)")
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-
-# ==========================
-#  CONFIGURACION DEL AREA DE JUEGO (valores por defecto)
+#  CONFIGURACION DEL AREA DE JUEGO
 # ==========================
 GAME_X1, GAME_Y1 = 394, 460
 GAME_X2, GAME_Y2 = 1100, 838
@@ -39,15 +29,21 @@ SPRITES_DIR = os.path.join(BASE_DIR, "sprites")
 PATH_OJO_MISIONERO = os.path.join(SPRITES_DIR, "misionero.png")
 PATH_OJO_CANIBAL   = os.path.join(SPRITES_DIR, "canibal.png")
 PATH_OJO_BALSA     = os.path.join(SPRITES_DIR, "balsa.png")
+PATH_PANTALLA_FINAL = os.path.join(SPRITES_DIR, "pantalla_final.png")  
 
 # Archivo de configuración para guardar las coordenadas
 CONFIG_FILE = os.path.join(BASE_DIR, "area_config.json")
 
 # ==========================
+#  VARIABLES GLOBALES
+# ==========================
+ALT_C_PRESSED = False
+plantillas = None
+
+# ==========================
 #  FUNCIONES DE CONFIGURACION
 # ==========================
 def guardar_configuracion(x1, y1, x2, y2):
-    """Guarda la configuración del área en un archivo JSON"""
     config = {
         'GAME_X1': x1,
         'GAME_Y1': y1,
@@ -64,7 +60,6 @@ def guardar_configuracion(x1, y1, x2, y2):
         return False
 
 def cargar_configuracion():
-    """Carga la configuración del área desde el archivo JSON"""
     global GAME_X1, GAME_Y1, GAME_X2, GAME_Y2, GAME_W, GAME_H, MITAD_X
     if not os.path.exists(CONFIG_FILE):
         return False
@@ -91,7 +86,6 @@ def cargar_configuracion():
 #  CALIBRACION CON 2 CLICS
 # ==========================
 def calibrar_area_con_clics():
-    """Calibra el área de juego con 2 clics del ratón"""
     print("\n" + "="*50)
     print("CALIBRACION DEL AREA DE JUEGO")
     print("="*50)
@@ -143,18 +137,16 @@ UMBRAL = 0.73
 UMBRAL_BALSA = 0.8
 DISTANCIA_MAX_AGRUPAR = 40
 DISTANCIA_BALSA = 65
+UMBRAL_PANTALLA_FINAL = 0.7
 
 # ==========================
-#  OFFSETS PARA BALSA
+#  OFFSETS
 # ==========================
 BALSA_CLICK_OFFSET_X = -5
 BALSA_CLICK_OFFSET_Y = -5
 BALSA_DETECCION_OFFSET_X = -80
 BALSA_DETECCION_OFFSET_Y = -75
 
-# ==========================
-#  OFFSETS SEPARADOS PARA CADA TIPO DE PERSONAJE
-# ==========================
 MISIONERO_CLICK_OFFSET_X = 5
 MISIONERO_CLICK_OFFSET_Y = 10
 CANIBAL_CLICK_OFFSET_X = -7
@@ -165,7 +157,6 @@ CANIBAL_CLICK_OFFSET_Y = 10
 # ==========================
 def cargar_plantilla(ruta):
     if not os.path.exists(ruta):
-        print(f"Error: {ruta} no encontrado")
         return None
     return cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
 
@@ -173,12 +164,15 @@ def cargar_todas():
     plantillas = {
         'misionero': cargar_plantilla(PATH_OJO_MISIONERO),
         'canibal': cargar_plantilla(PATH_OJO_CANIBAL),
-        'balsa': cargar_plantilla(PATH_OJO_BALSA)
+        'balsa': cargar_plantilla(PATH_OJO_BALSA),
+        'pantalla_final': cargar_plantilla(PATH_PANTALLA_FINAL)
     }
     for k, v in plantillas.items():
-        if v is None:
+        if v is None and k != 'pantalla_final':
             print(f"Error: No se pudo cargar {k}")
             return None
+    if plantillas['pantalla_final'] is not None:
+        print("[+] Plantilla de pantalla final cargada")
     print("Plantillas OK")
     return plantillas
 
@@ -207,6 +201,19 @@ def detectar_todos(imagen):
             umbral = UMBRAL_BALSA if clave == 'balsa' else UMBRAL
             detecciones[clave] = detectar_plantilla(imagen, plantilla, umbral)
     return detecciones
+
+# ==========================
+#  DETECTAR PANTALLA FINAL
+# ==========================
+def detectar_pantalla_final():
+    if plantillas.get('pantalla_final') is None:
+        return False
+    try:
+        img = cv2.cvtColor(np.array(ImageGrab.grab(bbox=(GAME_X1, GAME_Y1, GAME_X2, GAME_Y2))), cv2.COLOR_RGB2BGR)
+        pts = detectar_plantilla(img, plantillas['pantalla_final'], umbral=UMBRAL_PANTALLA_FINAL)
+        return len(pts) > 0
+    except:
+        return False
 
 # ==========================
 #  AGRUPAR PUNTOS CERCANOS
@@ -276,7 +283,7 @@ def rel_a_abs(x_rel, y_rel):
     return GAME_X1 + x_rel, GAME_Y1 + y_rel
 
 # ==========================
-#  FUNCION DE CLIC MEJORADA
+#  FUNCION DE CLIC
 # ==========================
 def click(posiciones_rel, count=1, offset=5, desc="", es_balsa=False, es_misionero=False, es_canibal=False):
     for i in range(count):
@@ -442,7 +449,7 @@ def get_approx_position(bank, idx=0):
 # ==========================
 #  BAJAR PERSONAJES
 # ==========================
-def bajar_todos_los_personajes(move, to_bank, estado_actual):
+def bajar_todos_los_personajes(move, to_bank, estado_actual, es_ultimo_movimiento=False):
     move_map = {
         'M': [('m', 0)], 'C': [('c', 0)],
         'MM': [('m', 0), ('m', 1)],
@@ -452,8 +459,10 @@ def bajar_todos_los_personajes(move, to_bank, estado_actual):
     
     persons = move_map.get(move, [])
     temp_state = estado_actual
+    pantalla_final_detectada = False
     
-    for intento in range(3):
+    # 2 intentos máximos
+    for intento in range(2):
         balsa_m_list = list(temp_state['positions_rel'].get('balsa_m', []))
         balsa_c_list = list(temp_state['positions_rel'].get('balsa_c', []))
         personajes_balsa = list(temp_state['personajes_balsa'])
@@ -488,16 +497,39 @@ def bajar_todos_los_personajes(move, to_bank, estado_actual):
             time.sleep(0.5)
             
         temp_state = get_game_state()
+        
+        # Verificar si es el último intento o ya no hay personajes en balsa
+        if intento == 1 or temp_state['total_balsa'] == 0:
+            time.sleep(0.1)
+            if detectar_pantalla_final():
+                pantalla_final_detectada = True
+        
         if temp_state['total_balsa'] == 0:
             break
         time.sleep(0.5)
     
-    return get_game_state()
+    # Después de todos los intentos, obtener el estado final
+    estado_final = get_game_state()
+    estado_final['mision_cumplida'] = False
+    
+    # Si es el último movimiento y ya no hay personajes en balsa (misión cumplida)
+    if es_ultimo_movimiento and estado_final['total_balsa'] == 0:
+        print("\nMISION CUMPLIDA")
+        estado_final['mision_cumplida'] = True
+        time.sleep(0.5)
+        if pantalla_final_detectada or detectar_pantalla_final():
+            print("[+] Pantalla de finalizacion detectada")
+            pantalla_final_detectada = True
+    
+    # Guardar el resultado en el estado
+    estado_final['pantalla_final_detectada'] = pantalla_final_detectada
+    
+    return estado_final
 
 # ==========================
 #  EJECUTAR MOVIMIENTO
 # ==========================
-def execute_move(move, estado_actual, estado_esperado_despues):
+def execute_move(move, estado_actual, estado_esperado_despues, es_ultimo_movimiento=False):
     if estado_actual['boat_side'] == 0:
         from_bank, to_bank = 'derecha', 'izquierda'
     else:
@@ -533,7 +565,7 @@ def execute_move(move, estado_actual, estado_esperado_despues):
     
     time.sleep(3)
     
-    estado_final = bajar_todos_los_personajes(move, to_bank, get_game_state())
+    estado_final = bajar_todos_los_personajes(move, to_bank, get_game_state(), es_ultimo_movimiento)
     
     if verificar_estado(estado_esperado_despues, estado_final, ""):
         return True, estado_final
@@ -589,11 +621,50 @@ def visualizar_deteccion():
     cv2.destroyAllWindows()
 
 # ==========================
+#  HOTKEY ALT+X (ejecutar) y ALT+C (cancelar)
+# ==========================
+def on_press_alt_x(key):
+    if key == keyboard.Key.alt_l:
+        on_press_alt_x.alt = True
+    if getattr(on_press_alt_x, 'alt', False) and hasattr(key, 'char') and key.char == 'x':
+        threading.Thread(target=ejecutar_bot).start()
+
+def on_release_alt_x(key):
+    if key == keyboard.Key.alt_l:
+        on_press_alt_x.alt = False
+
+on_press_alt_x.alt = False
+
+def on_press_alt_c(key):
+    global ALT_C_PRESSED
+    if key == keyboard.Key.alt_l:
+        ALT_C_PRESSED = True
+    if ALT_C_PRESSED and hasattr(key, 'char') and key.char == 'c':
+        print("\n\n[!] Bot cancelado por el usuario (Alt+C)")
+        os._exit(0)
+
+def on_release_alt_c(key):
+    global ALT_C_PRESSED
+    if key == keyboard.Key.alt_l:
+        ALT_C_PRESSED = False
+
+# ==========================
+#  PROBAR DETECCION
+# ==========================
+def probar_deteccion():
+    estado = get_game_state()
+    print(f"\nDer: {estado['derecha'][0]}M {estado['derecha'][1]}C")
+    print(f"Izq: {estado['izquierda'][0]}M {estado['izquierda'][1]}C")
+    print(f"Balsa: {estado['balsa'][0]}M {estado['balsa'][1]}C")
+    if input("\nVer visualizacion? (s/n): ").lower() == 's':
+        visualizar_deteccion()
+
+# ==========================
 #  EJECUTAR BOT
 # ==========================
 def ejecutar_bot():
     print("\n" + "="*50)
-    print("BOT INICIADO - Presiona Ctrl+C para cancelar")
+    print("BOT INICIADO - Presiona Alt+C para cancelar")
     print("="*50)
     mostrar_area(0.8)
     
@@ -613,9 +684,12 @@ def ejecutar_bot():
     print(f"Plan: {' -> '.join(plan)}")
     
     m, c, b = estado['derecha'][0], estado['derecha'][1], estado['boat_side']
+    total_movimientos = len(plan)
+    mision_completada = False
     
     for i, move in enumerate(plan):
-        print(f"\n--- Paso {i+1}/{len(plan)}: {move} ---")
+        es_ultimo = (i == total_movimientos - 1)
+        print(f"\n--- Paso {i+1}/{total_movimientos}: {move} ---")
         print(f"Estado actual: ({m},{c},{b})")
         
         delta = {'M':(1,0), 'C':(0,1), 'MM':(2,0), 'CC':(0,2), 'MC':(1,1)}[move]
@@ -626,47 +700,22 @@ def ejecutar_bot():
         
         print(f"Objetivo: ({nm},{nc},{nb})")
         
-        ok, nuevo = execute_move(move, estado, (nm, nc, nb))
+        ok, nuevo = execute_move(move, estado, (nm, nc, nb), es_ultimo)
         if not ok:
-            print(f"Error en {move}")
             break
         
         estado = nuevo
         m, c, b = nm, nc, nb
-        print(f"Completado: ({m},{c},{b})")
+        
+        # Si era el último movimiento y ya se completó la misión, salir sin mostrar nada más
+        if es_ultimo and estado.get('mision_cumplida', False):
+            mision_completada = True
+            break
+        
+        if not es_ultimo:
+            print(f"Completado: ({m},{c},{b})")
         time.sleep(0.5)
     
-    final = get_game_state("Final:")
-    if final['derecha'] == (0,0) and final['boat_side'] == 1:
-        print("\nMISION CUMPLIDA")
-    else:
-        print(f"\nFallo: ({final['derecha'][0]},{final['derecha'][1]},{final['boat_side']})")
-
-# ==========================
-#  HOTKEY
-# ==========================
-def on_press(key):
-    if key == keyboard.Key.alt_l:
-        on_press.alt = True
-    if getattr(on_press, 'alt', False) and hasattr(key, 'char') and key.char == 'x':
-        threading.Thread(target=ejecutar_bot).start()
-
-def on_release(key):
-    if key == keyboard.Key.alt_l:
-        on_press.alt = False
-
-on_press.alt = False
-
-# ==========================
-#  PROBAR DETECCION
-# ==========================
-def probar_deteccion():
-    estado = get_game_state()
-    print(f"\nDer: {estado['derecha'][0]}M {estado['derecha'][1]}C")
-    print(f"Izq: {estado['izquierda'][0]}M {estado['izquierda'][1]}C")
-    print(f"Balsa: {estado['balsa'][0]}M {estado['balsa'][1]}C")
-    if input("\nVer visualizacion? (s/n): ").lower() == 's':
-        visualizar_deteccion()
 
 # ==========================
 #  MENU PRINCIPAL
@@ -676,9 +725,8 @@ def main():
     print("="*60)
     print("BOT MISIONEROS Y CANIBALES")
     print("="*60)
-    print("\nPresiona Ctrl+C en cualquier momento para cancelar la ejecucion")
+    print("\nPresiona Alt+C en cualquier momento para cancelar la ejecucion")
     
-    # Intentar cargar configuracion del JSON (si existe)
     if os.path.exists(CONFIG_FILE):
         if not cargar_configuracion():
             print("\n[-] Error en el archivo de configuracion. Se requiere recalibrar.")
@@ -691,11 +739,13 @@ def main():
             print("\n[-] Calibracion fallida. Saliendo...")
             return
     
-    # Cargar plantillas
     plantillas = cargar_todas()
     if plantillas is None:
         input("Enter para salir...")
         return
+    
+    listener_alt_c = keyboard.Listener(on_press=on_press_alt_c, on_release=on_release_alt_c)
+    listener_alt_c.start()
     
     while True:
         print("\n" + "-"*40)
@@ -711,7 +761,7 @@ def main():
         
         if op == '1':
             print("\nBot listo. Presiona ALT+X para ejecutar")
-            listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+            listener = keyboard.Listener(on_press=on_press_alt_x, on_release=on_release_alt_x)
             listener.start()
             listener.join()
             break
