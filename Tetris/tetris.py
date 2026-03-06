@@ -1,203 +1,438 @@
+import pyautogui
 import cv2
 import numpy as np
 import time
-import pyautogui
-from PIL import ImageGrab
-from collections import deque
-import threading
-from pynput import keyboard, mouse
-import json
-import tkinter as tk
-import os
-import sys
+from pynput import keyboard
 
-# ==========================
-#  CONFIGURACION DEL AREA DE JUEGO
-# ==========================
-GAME_X1, GAME_Y1 = 394, 460
-GAME_X2, GAME_Y2 = 1100, 838
-GAME_W = GAME_X2 - GAME_X1
-GAME_H = GAME_Y2 - GAME_Y1
-MITAD_X = GAME_W // 2
+############################################
+# CONFIGURACION REGIONES PANTALLA
+############################################
 
-# ==========================
-#  RUTAS A LAS PLANTILLAS
-# ==========================
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-SPRITES_DIR = os.path.join(BASE_DIR, "sprites")
+BOARD_REGION = (500,200,300,600)
 
-PATH_OJO_MISIONERO = os.path.join(SPRITES_DIR, "misionero.png")
-PATH_OJO_CANIBAL   = os.path.join(SPRITES_DIR, "canibal.png")
-PATH_OJO_BALSA     = os.path.join(SPRITES_DIR, "balsa.png")
-PATH_PANTALLA_FINAL = os.path.join(SPRITES_DIR, "pantalla_final.png")  
+NEXT1_REGION = (820,220,80,80)
+NEXT2_REGION = (820,300,80,80)
+NEXT3_REGION = (820,380,80,80)
 
-# Archivo de configuración para guardar las coordenadas
-CONFIG_FILE = os.path.join(BASE_DIR, "area_config.json")
+############################################
+# TECLAS CONTROL
+############################################
 
-# ==========================
-#  VARIABLES GLOBALES
-# ==========================
-ALT_C_PRESSED = False
-plantillas = None
+LEFT="left"
+RIGHT="right"
+ROTATE="up"
+DROP="space"
 
-# ==========================
-#  FUNCIONES DE CONFIGURACION
-# ==========================
-def guardar_configuracion(x1, y1, x2, y2):
-    config = {
-        'GAME_X1': x1,
-        'GAME_Y1': y1,
-        'GAME_X2': x2,
-        'GAME_Y2': y2
-    }
+############################################
+# VARIABLES GLOBALES
+############################################
+
+bot_running=False
+
+PIECES=['I','O','T','S','Z','J','L']
+
+############################################
+# CARGAR SPRITES
+############################################
+
+def load_sprites():
+
+    sprites={}
+
+    for p in PIECES:
+
+        img=cv2.imread(f"sprites/{p}.png")
+
+        gray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+
+        _,binary=cv2.threshold(gray,120,255,cv2.THRESH_BINARY)
+
+        sprites[p]=binary
+
+    return sprites
+
+############################################
+# CAPTURA PANTALLA
+############################################
+
+def capture(region):
+
+    shot=pyautogui.screenshot(region=region)
+
+    frame=np.array(shot)
+
+    gray=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+
+    _,binary=cv2.threshold(gray,120,255,cv2.THRESH_BINARY)
+
+    return binary,frame
+
+############################################
+# DETECTAR PIEZA
+############################################
+
+def detect_piece(region,sprites):
+
+    binary,frame=capture(region)
+
+    best_piece=None
+    best_score=0
+
+    for name,temp in sprites.items():
+
+        res=cv2.matchTemplate(binary,temp,cv2.TM_CCOEFF_NORMED)
+
+        _,score,_,_=cv2.minMaxLoc(res)
+
+        if score>best_score:
+
+            best_score=score
+            best_piece=name
+
+    return best_piece,frame
+
+############################################
+# DIBUJAR CENTRO
+############################################
+
+def draw_center(frame):
+
+    h,w,_=frame.shape
+
+    cx=w//2
+    cy=h//2
+
+    cv2.circle(frame,(cx,cy),5,(0,0,0),-1)
+
+############################################
+# CALIBRACION
+############################################
+
+def calibration_mode(sprites):
+
+    while True:
+
+        p1,f1=detect_piece(NEXT1_REGION,sprites)
+        p2,f2=detect_piece(NEXT2_REGION,sprites)
+        p3,f3=detect_piece(NEXT3_REGION,sprites)
+
+        draw_center(f1)
+        draw_center(f2)
+        draw_center(f3)
+
+        cv2.imshow("Next1",f1)
+        cv2.imshow("Next2",f2)
+        cv2.imshow("Next3",f3)
+
+        if cv2.waitKey(1)==27:
+            break
+
+############################################
+# DETECTAR TABLERO
+############################################
+
+def detect_board():
+
+    binary,_=capture(BOARD_REGION)
+
+    grid=np.zeros((20,10))
+
+    h,w=binary.shape
+
+    ch=h//20
+    cw=w//10
+
+    for r in range(20):
+
+        for c in range(10):
+
+            cell=binary[r*ch:(r+1)*ch,c*cw:(c+1)*cw]
+
+            if np.mean(cell)>80:
+
+                grid[r][c]=1
+
+    return grid
+
+############################################
+# HEURISTICAS
+############################################
+
+def column_heights(board):
+
+    heights=[]
+
+    for c in range(10):
+
+        h=0
+
+        for r in range(20):
+
+            if board[r][c]==1:
+
+                h=20-r
+                break
+
+        heights.append(h)
+
+    return heights
+
+def holes(board):
+
+    count=0
+
+    for c in range(10):
+
+        block=False
+
+        for r in range(20):
+
+            if board[r][c]==1:
+
+                block=True
+
+            elif block:
+
+                count+=1
+
+    return count
+
+def bumpiness(heights):
+
+    total=0
+
+    for i in range(9):
+
+        total+=abs(heights[i]-heights[i+1])
+
+    return total
+
+def lines(board):
+
+    return sum([1 for r in board if sum(r)==10])
+
+############################################
+# COLUMNA RESERVADA
+############################################
+
+def reserve_penalty(board,piece):
+
+    heights=column_heights(board)
+
+    near_complete=sum(1 for r in board if sum(r)>=9)
+
+    if near_complete>=5 and piece!='L':
+
+        return 0
+
+    return heights[9]*0.5
+
+############################################
+# EVALUACION
+############################################
+
+def evaluate(board,piece):
+
+    heights=column_heights(board)
+
+    score=0
+
+    score+=lines(board)*3
+    score-=holes(board)*7
+    score-=bumpiness(heights)*0.6
+    score-=sum(heights)*0.35
+    score-=reserve_penalty(board,piece)
+
+    return score
+
+############################################
+# SIMULACION
+############################################
+
+def simulate(board,piece,rot,x):
+
+    new=np.copy(board)
+
+    heights=column_heights(new)
+
+    y=20-heights[x]-1
+
+    if y<0:
+        y=0
+
+    if x<0 or x>9:
+        return new
+
+    new[y][x]=1
+
+    return new
+
+############################################
+# BEAM SEARCH
+############################################
+
+def beam_search(board,pieces,depth=3,beam_width=8):
+
+    states=[(board,0,None)]
+
+    for d in range(depth):
+
+        new_states=[]
+
+        piece=pieces[d]
+
+        for b,score,move in states:
+
+            for rot in range(4):
+
+                for x in range(10):
+
+                    nb=simulate(b,piece,rot,x)
+
+                    s=evaluate(nb,piece)
+
+                    if d==0:
+                        m=(rot,x)
+                    else:
+                        m=move
+
+                    new_states.append((nb,score+s,m))
+
+        new_states.sort(key=lambda x:x[1],reverse=True)
+
+        states=new_states[:beam_width]
+
+    return states[0][2]
+
+############################################
+# EJECUTAR MOVIMIENTO
+############################################
+
+def play_move(rot,x):
+
+    spawn=4
+
+    for _ in range(rot):
+        pyautogui.press(ROTATE)
+        time.sleep(0.01)
+
+    dx=x-spawn
+
+    if dx>0:
+        for _ in range(dx):
+            pyautogui.press(RIGHT)
+            time.sleep(0.01)
+
+    else:
+        for _ in range(abs(dx)):
+            pyautogui.press(LEFT)
+            time.sleep(0.01)
+
+    pyautogui.press(DROP)
+
+############################################
+# COLA PIEZAS
+############################################
+
+def init_next_pieces(sprites):
+
+    p1,_=detect_piece(NEXT1_REGION,sprites)
+    p2,_=detect_piece(NEXT2_REGION,sprites)
+    p3,_=detect_piece(NEXT3_REGION,sprites)
+
+    return [p1,p2,p3]
+
+def update_next(queue,sprites):
+
+    new,_=detect_piece(NEXT3_REGION,sprites)
+
+    queue.append(new)
+
+    if len(queue)>3:
+        queue.pop(0)
+
+    return queue
+
+############################################
+# BOT PRINCIPAL
+############################################
+
+def run_bot():
+
+    sprites=load_sprites()
+
+    next_pieces=init_next_pieces(sprites)
+
+    while bot_running:
+
+        if None in next_pieces:
+            continue
+
+        board=detect_board()
+
+        move=beam_search(board,next_pieces)
+
+        play_move(move[0],move[1])
+
+        time.sleep(0.15)
+
+        next_pieces.pop(0)
+
+        next_pieces=update_next(next_pieces,sprites)
+
+############################################
+# MENU
+############################################
+
+def menu():
+
+    sprites=load_sprites()
+
+    while True:
+
+        print("\n===== TETRIS BOT =====")
+        print("1 iniciar bot (presiona B)")
+        print("2 modo calibracion")
+        print("3 salir")
+
+        op=input("> ")
+
+        if op=="1":
+            print("esperando tecla B...")
+
+        elif op=="2":
+            calibration_mode(sprites)
+
+        elif op=="3":
+            break
+
+############################################
+# ACTIVAR BOT
+############################################
+
+def on_press(key):
+
+    global bot_running
+
     try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=4)
-        print(f"[+] Configuracion guardada en {CONFIG_FILE}")
-        return True
-    except Exception as e:
-        print(f"[-] Error al guardar configuracion: {e}")
-        return False
 
-def cargar_configuracion():
-    global GAME_X1, GAME_Y1, GAME_X2, GAME_Y2, GAME_W, GAME_H, MITAD_X
-    if not os.path.exists(CONFIG_FILE):
-        return False
-    
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-        
-        GAME_X1 = config['GAME_X1']
-        GAME_Y1 = config['GAME_Y1']
-        GAME_X2 = config['GAME_X2']
-        GAME_Y2 = config['GAME_Y2']
-        GAME_W = GAME_X2 - GAME_X1
-        GAME_H = GAME_Y2 - GAME_Y1
-        MITAD_X = GAME_W // 2
-        
-        print(f"[+] Configuracion cargada: ({GAME_X1},{GAME_Y1}) - ({GAME_X2},{GAME_Y2})")
-        return True
-    except Exception as e:
-        print(f"[-] Error al cargar configuracion: {e}")
-        return False
+        if key.char=='b':
 
-# ==========================
-#  CALIBRACION CON 2 CLICS
-# ==========================
-def calibrar_area_con_clics():
-    print("\n" + "="*50)
-    print("CALIBRACION DEL AREA DE JUEGO")
-    print("="*50)
-    print("\nInstrucciones:")
-    print("  1. Haz clic en la esquina SUPERIOR IZQUIERDA del area de juego")
-    print("  2. Haz clic en la esquina INFERIOR DERECHA del area de juego")
-    print("\nEsperando clics...")
-    
-    coords = []
-    
-    def on_click(x, y, button, pressed):
-        if button == mouse.Button.left and pressed:
-            coords.append((x, y))
-            print(f"   Clic {len(coords)} registrado en: ({int(x)}, {int(y)})")
-            if len(coords) >= 2:
-                return False
-    
-    with mouse.Listener(on_click=on_click) as listener:
-        listener.join()
-    
-    if len(coords) < 2:
-        print("\n[-] No se registraron los 2 clics.")
-        return False
-    
-    x1, y1 = coords[0]
-    x2, y2 = coords[1]
-    
-    nx1 = min(x1, x2)
-    ny1 = min(y1, y2)
-    nx2 = max(x1, x2)
-    ny2 = max(y1, y2)
-    
-    print(f"\n[+] Area calibrada: ({nx1},{ny1}) - ({nx2},{ny2})")
-    print(f"    Ancho: {nx2-nx1} px, Alto: {ny2-ny1} px")
-    
-    global GAME_X1, GAME_Y1, GAME_X2, GAME_Y2, GAME_W, GAME_H, MITAD_X
-    GAME_X1, GAME_Y1, GAME_X2, GAME_Y2 = nx1, ny1, nx2, ny2
-    GAME_W = GAME_X2 - GAME_X1
-    GAME_H = GAME_Y2 - GAME_Y1
-    MITAD_X = GAME_W // 2
-    
-    guardar_configuracion(GAME_X1, GAME_Y1, GAME_X2, GAME_Y2)
-    return True
+            print("BOT ACTIVADO")
 
-# ==========================
-#  UMBRALES DE CONFIANZA
-# ==========================
-UMBRAL = 0.73
-UMBRAL_BALSA = 0.8
-DISTANCIA_MAX_AGRUPAR = 40
-DISTANCIA_BALSA = 65
-UMBRAL_PANTALLA_FINAL = 0.7
+            bot_running=True
 
-# ==========================
-#  OFFSETS
-# ==========================
-BALSA_CLICK_OFFSET_X = -5
-BALSA_CLICK_OFFSET_Y = -5
-BALSA_DETECCION_OFFSET_X = -80
-BALSA_DETECCION_OFFSET_Y = -75
+            run_bot()
 
-MISIONERO_CLICK_OFFSET_X = 5
-MISIONERO_CLICK_OFFSET_Y = 10
-CANIBAL_CLICK_OFFSET_X = -7
-CANIBAL_CLICK_OFFSET_Y = 10
+    except:
+        pass
 
-# ==========================
-#  CARGAR PLANTILLAS
-# ==========================
-def cargar_plantilla(ruta):
-    if not os.path.exists(ruta):
-        return None
-    return cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+############################################
+# LISTENER
+############################################
 
-def cargar_todas():
-    plantillas = {
-        'misionero': cargar_plantilla(PATH_OJO_MISIONERO),
-        'canibal': cargar_plantilla(PATH_OJO_CANIBAL),
-        'balsa': cargar_plantilla(PATH_OJO_BALSA),
-        'pantalla_final': cargar_plantilla(PATH_PANTALLA_FINAL)
-    }
-    for k, v in plantillas.items():
-        if v is None and k != 'pantalla_final':
-            print(f"Error: No se pudo cargar {k}")
-            return None
-    if plantillas['pantalla_final'] is not None:
-        print("[+] Plantilla de pantalla final cargada")
-    print("Plantillas OK")
-    return plantillas
+listener=keyboard.Listener(on_press=on_press)
 
-# ==========================
-#  DETECCION POR PLANTILLA
-# ==========================
-def detectar_plantilla(imagen_grande, plantilla, umbral=UMBRAL):
-    if plantilla is None:
-        return []
-    img_gris = cv2.cvtColor(imagen_grande, cv2.COLOR_BGR2GRAY) if len(imagen_grande.shape) == 3 else imagen_grande
-    w, h = plantilla.shape[::-1]
-    res = cv2.matchTemplate(img_gris, plantilla, cv2.TM_CCOEFF_NORMED)
-    loc = np.where(res >= umbral)
-    puntos = [(pt[0] + w//2, pt[1] + h//2) for pt in zip(*loc[::-1])]
-    
-    unicos = []
-    for p in puntos:
-        if not any(abs(p[0]-q[0]) < w//2 and abs(p[1]-q[1]) < h//2 for q in unicos):
-            unicos.append(p)
-    return unicos
+listener.start()
 
-def detectar_todos(imagen):
-    detecciones = {}
-    for clave, plantilla in plantillas.items():
-        if plantilla is not None:
-            umbral = UMBRAL_BALSA if clave == 'balsa' else UMBRAL
-            detecciones[clave] = detectar_plantilla(imagen, plantilla, umbral)
-    return detecciones
+menu()
