@@ -20,13 +20,13 @@ TETROMINO_COLORS = {
 
     # DE TU CÓDIGO
     "I": np.array([255,255,0]),    # cyan
-    "Z": np.array([75,68,191]),      # red
+    "Z": np.array([0,0,255]),      # red
     "J": np.array([255,0,0]),      # blue
-    "L": np.array([66,115,196]),    # orange
+    "L": np.array([0,165,255]),    # orange
 
     # DEL CÓDIGO NUEVO
     "O": np.array([84,178,200]),    # yellow
-    "T": np.array([163,64,173]),    # purple
+    "T": np.array([255,0,255]),    # purple
     "S": np.array((59, 244, 175))       # green
 }
 
