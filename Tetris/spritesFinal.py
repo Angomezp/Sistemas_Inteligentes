@@ -26,6 +26,7 @@ COLOR_TOLERANCE = 35
 
 BOARD_ROWS = 20
 BOARD_COLS = 10
+SPAWN_ROWS = 3
 
 ########################################
 # COLORES DE PIEZAS
@@ -63,7 +64,6 @@ def capture_screen(region=None):
         img = np.array(screenshot)
 
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-
 drawing = False
 ix, iy = -1, -1
 rect = None
@@ -120,7 +120,6 @@ def modo_calibracion():
     config = {}
 
     config["tablero"] = calibrar_area("TABLERO")
-    config["spawn"] = calibrar_area("SPAWN")
     config["siguientes"] = calibrar_area("SIGUIENTES")
     config["hold"] = calibrar_area("HOLD")
 
@@ -196,6 +195,7 @@ def calibrar_colores():
 
     print("Colores calibrados y guardados")
 
+
 ########################################
 # CALCULAR TAMAÑO DE CELDA
 ########################################
@@ -209,7 +209,25 @@ def obtener_tamano_celda(region_tablero):
     cell_h = height / BOARD_ROWS
 
     return cell_w, cell_h
+########################################
+# OBTENER ZONA SPAWN (3 FILAS ARRIBA)
+########################################
 
+def obtener_region_spawn(region_tablero):
+
+    cell_w, cell_h = obtener_tamano_celda(region_tablero)
+
+    # ahora el spawn incluye 3 filas arriba + la primera del tablero
+    spawn_height = int(cell_h * (SPAWN_ROWS + 1))
+
+    spawn_region = (
+        region_tablero[0],
+        int(region_tablero[1] - cell_h * SPAWN_ROWS),  # sube solo 3 filas
+        region_tablero[2],
+        spawn_height
+    )
+
+    return spawn_region
 ########################################
 # MATRIZ TABLERO
 ########################################
@@ -268,8 +286,7 @@ def dibujar_malla(screen, region):
             1
         )
 
-    # SOLO filas 1 a 19
-    for r in range(1, BOARD_ROWS):
+    for r in range(BOARD_ROWS + 1):
 
         y = int(y_offset + r * cell_h)
 
@@ -309,7 +326,7 @@ def dibujar_ocupacion(screen, region, matriz):
                 )
 
 ########################################
-# DIBUJAR PIEZAS
+# DIBUJAR PIEZAS (AGREGADO DEL SEGUNDO CODIGO)
 ########################################
 
 def dibujar_piezas(screen,region,piezas,color):
@@ -442,28 +459,37 @@ def visualizar_zonas():
         screen = capture_screen()
 
         t = config["tablero"]
-        sp = config["spawn"]
         s = config["siguientes"]
         h = config["hold"]
 
+        spawn_region = obtener_region_spawn(t)
+
         tablero_img = capture_screen(t)
-        spawn_img = capture_screen(sp)
+        spawn_img = capture_screen(spawn_region)
 
         siguientes_img = capture_screen(s)
         hold_img = capture_screen(h)
 
-        matriz_tablero = obtener_matriz_tablero(tablero_img, t)
+        # matriz_tablero = obtener_matriz_tablero(tablero_img, t)
 
         piezas_spawn = detectar_piezas(spawn_img)
         piezas_s = detectar_piezas(siguientes_img)
         piezas_h = detectar_piezas(hold_img)
 
-        cv2.rectangle(screen,(t[0],t[1]),(t[0]+t[2],t[1]+t[3]),(0,255,0),2)
-        dibujar_malla(screen, t)
-        dibujar_ocupacion(screen, t, matriz_tablero)
+        # cv2.rectangle(screen,(t[0],t[1]),(t[0]+t[2],t[1]+t[3]),(0,255,0),2)
+        # zona spawn rosada
+        spawn = obtener_region_spawn(t)
 
-        cv2.rectangle(screen,(sp[0],sp[1]),(sp[0]+sp[2],sp[1]+sp[3]),(255,105,180),2)
-        dibujar_piezas(screen,sp,piezas_spawn,(255,105,180))
+        cv2.rectangle(
+            screen,
+            (spawn[0], spawn[1]),
+            (spawn[0] + spawn[2], spawn[1] + spawn[3]),
+            (255,105,180),
+            2
+        )
+        # dibujar_malla(screen, t)
+        # dibujar_ocupacion(screen, t, matriz_tablero)
+        dibujar_piezas(screen,spawn,piezas_spawn,(255,105,180))
 
         cv2.rectangle(screen,(s[0],s[1]),(s[0]+s[2],s[1]+s[3]),(255,0,0),2)
         dibujar_piezas(screen,s,piezas_s,(255,0,0))
@@ -491,9 +517,9 @@ def ejecutar_bot():
 
     while True:
 
-        spawn = capture_screen(config["spawn"])
+        siguientes = capture_screen(config["siguientes"])
 
-        piezas = detectar_piezas(spawn)
+        piezas = detectar_piezas(siguientes)
 
         if len(piezas) > 0:
 

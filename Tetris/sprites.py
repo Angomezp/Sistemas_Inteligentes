@@ -26,7 +26,7 @@ COLOR_TOLERANCE = 35
 
 BOARD_ROWS = 20
 BOARD_COLS = 10
-SPAWN_ROWS = 2
+SPAWN_ROWS = 4
 
 ########################################
 # COLORES DE PIEZAS
@@ -285,7 +285,7 @@ def dibujar_malla(screen, region):
             1
         )
 
-    for r in range(BOARD_ROWS + 1):
+    for r in range(1,BOARD_ROWS ):
 
         y = int(y_offset + r * cell_h)
 
