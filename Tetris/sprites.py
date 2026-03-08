@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import mss
 import json
-from pynput.keyboard import Controller, Key, Listener
+from pynput.keyboard import Controller
 import time
 
 keyboard = Controller()
@@ -12,46 +12,36 @@ CONFIG_FILE = "tetrio_config.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
 
+########################################
+# TOLERANCIA DE COLOR
+########################################
+
 COLOR_TOLERANCE = 30
+
+########################################
+# CONFIGURACION TABLERO
+########################################
 
 BOARD_ROWS = 20
 BOARD_COLS = 10
 
 ########################################
-# FORMAS DE PIEZAS
+# COLORES DE PIEZAS (por defecto)
 ########################################
 
-PIECES = {
+TETROMINO_COLORS = {
 
-"I":[
-[[1,1,1,1]],
-[[1],[1],[1],[1]]
-],
-
-"O":[
-[[1,1],
- [1,1]]
-],
-
-"T":[
-[[0,1,0],
- [1,1,1]],
-
-[[1,0],
- [1,1],
- [1,0]],
-
-[[1,1,1],
- [0,1,0]],
-
-[[0,1],
- [1,1],
- [0,1]]
-]
+    "I": np.array([255,255,0]),
+    "Z": np.array([75,68,191]),
+    "J": np.array([255,0,0]),
+    "L": np.array([66,115,196]),
+    "O": np.array([84,178,200]),
+    "T": np.array([163,64,173]),
+    "S": np.array([55,255,175])
 }
 
 ########################################
-# CAPTURA
+# CAPTURA DE PANTALLA
 ########################################
 
 def capture_screen(region=None):
@@ -68,11 +58,13 @@ def capture_screen(region=None):
                 "height": region[3]
             }
 
-        img = np.array(sct.grab(monitor))
+        screenshot = sct.grab(monitor)
+        img = np.array(screenshot)
+
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
 ########################################
-# TAMAÑO CELDA
+# CALCULAR TAMAÑO DE CELDA DINÁMICO
 ########################################
 
 def obtener_tamano_celda(region_tablero):
@@ -80,7 +72,11 @@ def obtener_tamano_celda(region_tablero):
     width = region_tablero[2]
     height = region_tablero[3]
 
-    return width / BOARD_COLS, height / BOARD_ROWS
+    cell_w = width / BOARD_COLS
+    cell_h = height / BOARD_ROWS
+
+    return cell_w, cell_h
+
 
 ########################################
 # ZONA SPAWN
@@ -97,8 +93,9 @@ def obtener_zona_spawn(tablero_region):
         int(cell_h * 3)
     )
 
+
 ########################################
-# MATRIZ TABLERO
+# MATRIZ DEL TABLERO
 ########################################
 
 def obtener_matriz_tablero(tablero_img, region_tablero):
@@ -114,6 +111,7 @@ def obtener_matriz_tablero(tablero_img, region_tablero):
 
             x1 = int(col * cell_w)
             y1 = int(fila * cell_h)
+
             x2 = int(x1 + cell_w)
             y2 = int(y1 + cell_h)
 
@@ -122,147 +120,15 @@ def obtener_matriz_tablero(tablero_img, region_tablero):
 
             celda = gray[y1:y2, x1:x2]
 
-            if np.mean(celda) > 40:
+            promedio = np.mean(celda)
+
+            if promedio > 40:
                 matriz[fila][col] = 1
+            else:
+                matriz[fila][col] = 0
 
     return matriz
 
-########################################
-# DETECTAR PIEZAS
-########################################
-
-def detectar_piezas(img):
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray,(5,5),0)
-
-    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
-
-    contornos,_ = cv2.findContours(th,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-
-    piezas = []
-
-    for c in contornos:
-
-        area = cv2.contourArea(c)
-
-        if area < 80:
-            continue
-
-        x,y,w,h = cv2.boundingRect(c)
-
-        piezas.append((x,y,w,h))
-
-    return piezas
-
-########################################
-# LOGICA TETRIS
-########################################
-
-def puede_colocar(board, piece, row, col):
-
-    for r in range(len(piece)):
-        for c in range(len(piece[0])):
-
-            if piece[r][c] == 0:
-                continue
-
-            br = row + r
-            bc = col + c
-
-            if br >= BOARD_ROWS or bc < 0 or bc >= BOARD_COLS:
-                return False
-
-            if board[br][bc] == 1:
-                return False
-
-    return True
-
-
-def calcular_drop(board, piece, col):
-
-    row = 0
-
-    while puede_colocar(board, piece, row+1, col):
-
-        row += 1
-
-        if row + len(piece) >= BOARD_ROWS:
-            break
-
-    return row
-
-
-def evaluar_tablero(board):
-
-    alturas = []
-
-    for c in range(BOARD_COLS):
-
-        altura = 0
-
-        for r in range(BOARD_ROWS):
-
-            if board[r][c] == 1:
-                altura = BOARD_ROWS - r
-                break
-
-        alturas.append(altura)
-
-    return sum(alturas)
-
-
-def mejor_movimiento(board, pieza):
-
-    mejor_score = 1e9
-    mejor_col = 0
-    mejor_rot = 0
-
-    for rot,forma in enumerate(PIECES[pieza]):
-
-        ancho = len(forma[0])
-
-        for col in range(BOARD_COLS - ancho + 1):
-
-            row = calcular_drop(board, forma, col)
-
-            sim = board.copy()
-
-            for r in range(len(forma)):
-                for c in range(ancho):
-
-                    if forma[r][c] == 1:
-                        sim[row+r][col+c] = 1
-
-            score = evaluar_tablero(sim)
-
-            if score < mejor_score:
-
-                mejor_score = score
-                mejor_col = col
-                mejor_rot = rot
-
-    return mejor_col, mejor_rot
-
-########################################
-# MOVIMIENTO
-########################################
-
-def mover_a_columna(col_actual, col_objetivo):
-
-    diff = col_objetivo - col_actual
-
-    if diff > 0:
-        for _ in range(diff):
-            keyboard.press(Key.right)
-            keyboard.release(Key.right)
-            time.sleep(0.02)
-
-    elif diff < 0:
-        for _ in range(abs(diff)):
-            keyboard.press(Key.left)
-            keyboard.release(Key.left)
-            time.sleep(0.02)
 ########################################
 # DIBUJAR MALLA
 ########################################
@@ -326,64 +192,97 @@ def dibujar_ocupacion(screen, region, matriz):
                 )
 
 ########################################
-# BOT
+# CARGAR COLORES CALIBRADOS
 ########################################
 
-def ejecutar_bot():
+def cargar_colores_calibrados():
 
-    time.sleep(3)
+    global TETROMINO_COLORS
+    global COLOR_TOLERANCE
+
+    if not os.path.exists(CONFIG_PATH):
+        return
 
     with open(CONFIG_PATH) as f:
         config = json.load(f)
 
-    tablero_region = config["tablero"]
-    spawn = obtener_zona_spawn(tablero_region)
+    if "colores" in config:
 
-    print("Bot iniciado (ALT+C para detener)")
+        for pieza,color in config["colores"].items():
+            TETROMINO_COLORS[pieza] = np.array(color)
 
-    detener = False
+    if "tolerancia_color" in config:
+        COLOR_TOLERANCE = config["tolerancia_color"]
 
-    def on_press(key):
+########################################
+# CLASIFICACIÓN DE PIEZA
+########################################
 
-        nonlocal detener
+def clasificar_pieza(img, contorno, x, y, w, h):
 
-        if key == Key.alt_l:
-            detener = True
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask,[contorno],-1,255,-1)
 
-    listener = Listener(on_press=on_press)
-    listener.start()
+    mean_color = cv2.mean(img, mask=mask)[:3]
+    mean_color = np.array(mean_color)
 
-    while not detener:
+    ratio = w / h if h != 0 else 1
 
-        tablero_img = capture_screen(tablero_region)
+    if ratio > 2.5 or ratio < 0.4:
+        return "I"
 
-        board = obtener_matriz_tablero(tablero_img, tablero_region)
+    if 0.8 < ratio < 1.2:
+        dist_o = np.linalg.norm(mean_color - TETROMINO_COLORS["O"])
+        if dist_o < COLOR_TOLERANCE:
+            return "O"
 
-        spawn_img = capture_screen(spawn)
+    mejor = None
+    mejor_dist = 1e9
 
-        piezas = detectar_piezas(spawn_img)
+    for pieza, color in TETROMINO_COLORS.items():
 
-        if len(piezas) == 0:
+        dist = np.linalg.norm(mean_color - color)
+
+        if dist < mejor_dist and dist < COLOR_TOLERANCE:
+            mejor_dist = dist
+            mejor = pieza
+
+    return mejor
+
+########################################
+# DETECCIÓN DE PIEZAS
+########################################
+
+def detectar_piezas(img):
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    blur = cv2.GaussianBlur(gray,(5,5),0)
+
+    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
+
+    contornos,_ = cv2.findContours(
+        th,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    piezas = []
+
+    for c in contornos:
+
+        area = cv2.contourArea(c)
+
+        if area < 80:
             continue
 
-        pieza = "T"
+        x,y,w,h = cv2.boundingRect(c)
 
-        col, rot = mejor_movimiento(board, pieza)
+        tipo = clasificar_pieza(img,c,x,y,w,h)
 
-        for _ in range(rot):
-            keyboard.press('x')
-            keyboard.release('x')
-            time.sleep(0.03)
+        piezas.append((x,y,w,h,tipo))
 
-        mover_a_columna(4, col)
-
-        keyboard.press(Key.space)
-        keyboard.release(Key.space)
-
-        time.sleep(0.4)
-
-    listener.stop()
-
+    return piezas
 ########################################
 # VISUALIZAR ZONAS
 ########################################
@@ -495,8 +394,6 @@ def draw_rectangle(event, x, y, flags, param):
         cv2.rectangle(param,(ix,iy),(x,y),(0,255,0),2)
         cv2.imshow("calibracion",param)
 
-# CALIBRAR AREA
-
 def calibrar_area(nombre):
 
     global rect
@@ -524,8 +421,6 @@ def calibrar_area(nombre):
 
     return rect
 
-# MODO CALIBRACION
-
 def modo_calibracion():
 
     config = {}
@@ -540,7 +435,122 @@ def modo_calibracion():
     print("Calibración guardada")
 
 ########################################
-# MENU
+# CALIBRACIÓN DE COLORES
+########################################
+
+def calibrar_colores():
+
+    print("\nCalibración de colores")
+    print("Haz click sobre cada pieza cuando se te indique")
+
+    piezas_orden = ["I","J","L","O","S","T","Z"]
+
+    screen = capture_screen()
+
+    colores = {}
+    indice = [0]
+
+    def click(event,x,y,flags,param):
+
+        if event == cv2.EVENT_LBUTTONDOWN:
+
+            pieza_actual = piezas_orden[indice[0]]
+
+            color = screen[y,x]
+
+            print(f"Color capturado para {pieza_actual}: {color}")
+
+            colores[pieza_actual] = color.tolist()
+
+            indice[0] += 1
+
+            if indice[0] < len(piezas_orden):
+                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]}")
+            else:
+                print("Todas las piezas capturadas")
+
+    cv2.namedWindow("calibrar_colores")
+    cv2.setMouseCallback("calibrar_colores",click)
+
+    print(f"Haz click sobre la pieza {piezas_orden[0]}")
+
+    while True:
+
+        cv2.imshow("calibrar_colores",screen)
+
+        if indice[0] >= len(piezas_orden):
+            break
+
+        cv2.waitKey(1)
+
+    cv2.destroyAllWindows()
+
+    if os.path.exists(CONFIG_PATH):
+
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+
+    else:
+        config = {}
+
+    config["colores"] = colores
+    config["tolerancia_color"] = COLOR_TOLERANCE
+
+    with open(CONFIG_PATH,"w") as f:
+        json.dump(config,f)
+
+    print("Colores calibrados y guardados")
+
+
+########################################
+# MOVIMIENTOS
+########################################
+
+def mover_izquierda():
+    keyboard.press('left')
+    keyboard.release('left')
+
+def mover_derecha():
+    keyboard.press('right')
+    keyboard.release('right')
+
+def rotar():
+    keyboard.press('x')
+    keyboard.release('x')
+
+def caer():
+    keyboard.press('space')
+    keyboard.release('space')
+
+########################################
+# BOT
+########################################
+
+def ejecutar_bot():
+
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    print("Bot iniciado")
+
+    while True:
+
+        siguientes = capture_screen(config["siguientes"])
+
+        piezas = detectar_piezas(siguientes)
+
+        if len(piezas) > 0:
+
+            mover_izquierda()
+            time.sleep(0.1)
+
+            rotar()
+            time.sleep(0.1)
+
+            caer()
+
+########################################
+# MENÚ
 ########################################
 
 def menu():
@@ -548,27 +558,33 @@ def menu():
     while True:
 
         print("\nBOT TETRIO")
-        print("1 - Ejecutar bot")
-        print("2 - Ver detección")
-        print("3 - Calibrar zonas")
-        print("4 - Salir")
+        print("1 - Calibrar zonas")
+        print("2 - Ejecutar bot")
+        print("3 - Ver detección")
+        print("4 - Calibrar colores")
+        print("5 - Salir")
 
         op = input("> ")
 
         if op == "1":
-            ejecutar_bot()
-
-        elif op == "2":
-            visualizar_zonas()
-
-        elif op == "3":
             modo_calibracion()
 
+        elif op == "2":
+            ejecutar_bot()
+
+        elif op == "3":
+            visualizar_zonas()
+
         elif op == "4":
+            calibrar_colores()
+
+        elif op == "5":
             break
 
 ########################################
 
 if __name__ == "__main__":
 
+    cargar_colores_calibrados()
     menu()
+    print("ya")

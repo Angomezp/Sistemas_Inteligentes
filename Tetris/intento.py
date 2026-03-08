@@ -13,13 +13,31 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
 
 ########################################
+# TOLERANCIA DE COLOR
+########################################
+
+COLOR_TOLERANCE = 30
+
+########################################
+# COLORES DE PIEZAS (por defecto)
+########################################
+
+TETROMINO_COLORS = {
+    "I": np.array([255,255,0]),
+    "Z": np.array([75,68,191]),
+    "J": np.array([255,0,0]),
+    "L": np.array([66,115,196]),
+    "O": np.array([84,178,200]),
+    "T": np.array([163,64,173]),
+    "S": np.array([55,255,175])
+}
+
+########################################
 # CAPTURA DE PANTALLA
 ########################################
 
 def capture_screen(region=None):
-
     with mss.mss() as sct:
-
         if region is None:
             monitor = sct.monitors[1]
         else:
@@ -32,11 +50,100 @@ def capture_screen(region=None):
 
         screenshot = sct.grab(monitor)
         img = np.array(screenshot)
-
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
 ########################################
-# CALIBRACIÓN
+# CARGAR COLORES CALIBRADOS
+########################################
+
+def cargar_colores_calibrados():
+    global TETROMINO_COLORS
+    global COLOR_TOLERANCE
+
+    if not os.path.exists(CONFIG_PATH):
+        return
+
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    if "colores" in config:
+        for pieza,color in config["colores"].items():
+            TETROMINO_COLORS[pieza] = np.array(color)
+
+    if "tolerancia_color" in config:
+        COLOR_TOLERANCE = config["tolerancia_color"]
+
+########################################
+# CLASIFICACIÓN DE PIEZA
+########################################
+
+def clasificar_pieza(img, contorno, x, y, w, h):
+
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask,[contorno],-1,255,-1)
+
+    mean_color = cv2.mean(img, mask=mask)[:3]
+    mean_color = np.array(mean_color)
+
+    ratio = w / h if h != 0 else 1
+
+    if ratio > 2.5 or ratio < 0.4:
+        return "I"
+
+    if 0.8 < ratio < 1.2:
+        dist_o = np.linalg.norm(mean_color - TETROMINO_COLORS["O"])
+        if dist_o < COLOR_TOLERANCE:
+            return "O"
+
+    mejor = None
+    mejor_dist = 1e9
+
+    for pieza, color in TETROMINO_COLORS.items():
+
+        dist = np.linalg.norm(mean_color - color)
+
+        if dist < mejor_dist and dist < COLOR_TOLERANCE:
+            mejor_dist = dist
+            mejor = pieza
+
+    return mejor
+
+########################################
+# DETECCIÓN DE PIEZAS
+########################################
+
+def detectar_piezas(img):
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray,(5,5),0)
+
+    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
+
+    contornos,_ = cv2.findContours(
+        th,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    piezas = []
+
+    for c in contornos:
+
+        area = cv2.contourArea(c)
+
+        if area < 80:
+            continue
+
+        x,y,w,h = cv2.boundingRect(c)
+
+        tipo = clasificar_pieza(img,c,x,y,w,h)
+
+        piezas.append((x,y,w,h,tipo))
+
+    return piezas
+
+########################################
+# CALIBRACIÓN DE ZONAS
 ########################################
 
 drawing = False
@@ -104,37 +211,71 @@ def modo_calibracion():
     print("Calibración guardada")
 
 ########################################
-# DETECCIÓN DE SPRITES
+# CALIBRACIÓN DE COLORES
 ########################################
 
-def detectar_sprites_gray(img):
+def calibrar_colores():
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    print("\nCalibración de colores")
+    print("Haz click sobre cada pieza cuando se te indique")
 
-    blur = cv2.GaussianBlur(gray,(5,5),0)
+    piezas_orden = ["I","J","L","O","S","T","Z"]
 
-    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
+    screen = capture_screen()
 
-    contornos,_ = cv2.findContours(
-        th,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
+    colores = {}
+    indice = [0]
 
-    piezas = []
+    def click(event,x,y,flags,param):
 
-    for c in contornos:
+        if event == cv2.EVENT_LBUTTONDOWN:
 
-        area = cv2.contourArea(c)
+            pieza_actual = piezas_orden[indice[0]]
 
-        if area < 200:
-            continue
+            color = screen[y,x]
 
-        x,y,w,h = cv2.boundingRect(c)
+            print(f"Color capturado para {pieza_actual}: {color}")
 
-        piezas.append((x,y,w,h))
+            colores[pieza_actual] = color.tolist()
 
-    return piezas
+            indice[0] += 1
+
+            if indice[0] < len(piezas_orden):
+                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]}")
+            else:
+                print("Todas las piezas capturadas")
+
+    cv2.namedWindow("calibrar_colores")
+    cv2.setMouseCallback("calibrar_colores",click)
+
+    print(f"Haz click sobre la pieza {piezas_orden[0]}")
+
+    while True:
+
+        cv2.imshow("calibrar_colores",screen)
+
+        if indice[0] >= len(piezas_orden):
+            break
+
+        cv2.waitKey(1)
+
+    cv2.destroyAllWindows()
+
+    if os.path.exists(CONFIG_PATH):
+
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+
+    else:
+        config = {}
+
+    config["colores"] = colores
+    config["tolerancia_color"] = COLOR_TOLERANCE
+
+    with open(CONFIG_PATH,"w") as f:
+        json.dump(config,f)
+
+    print("Colores calibrados y guardados")
 
 ########################################
 # DIBUJAR PIEZAS
@@ -145,14 +286,21 @@ def dibujar_piezas(screen,region,piezas,color):
     x_offset = region[0]
     y_offset = region[1]
 
-    for (x,y,w,h) in piezas:
+    for (x,y,w,h,tipo) in piezas:
 
-        cx = x + w//2 + x_offset
-        cy = y + h//2 + y_offset
+        px = x + x_offset
+        py = y + y_offset
 
-        radio = max(w,h)//2
-
-        cv2.circle(screen,(cx,cy),radio,color,3)
+        cv2.putText(
+            screen,
+            tipo,
+            (px,py),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            color,
+            2,
+            cv2.LINE_AA
+        )
 
 ########################################
 # VISUALIZACIÓN
@@ -177,19 +325,16 @@ def visualizar_zonas():
         siguientes_img = capture_screen(s)
         hold_img = capture_screen(h)
 
-        piezas_t = detectar_sprites_gray(tablero_img)
-        piezas_s = detectar_sprites_gray(siguientes_img)
-        piezas_h = detectar_sprites_gray(hold_img)
+        piezas_t = detectar_piezas(tablero_img)
+        piezas_s = detectar_piezas(siguientes_img)
+        piezas_h = detectar_piezas(hold_img)
 
-        # TABLERO
         cv2.rectangle(screen,(t[0],t[1]),(t[0]+t[2],t[1]+t[3]),(0,255,0),2)
         dibujar_piezas(screen,t,piezas_t,(0,255,0))
 
-        # SIGUIENTES
         cv2.rectangle(screen,(s[0],s[1]),(s[0]+s[2],s[1]+s[3]),(255,0,0),2)
         dibujar_piezas(screen,s,piezas_s,(255,0,0))
 
-        # HOLD
         cv2.rectangle(screen,(h[0],h[1]),(h[0]+h[2],h[1]+h[3]),(0,165,255),2)
         dibujar_piezas(screen,h,piezas_h,(0,165,255))
 
@@ -235,16 +380,13 @@ def ejecutar_bot():
 
         siguientes = capture_screen(config["siguientes"])
 
-        piezas = detectar_sprites_gray(siguientes)
+        piezas = detectar_piezas(siguientes)
 
         if len(piezas) > 0:
-
             mover_izquierda()
             time.sleep(0.1)
-
             rotar()
             time.sleep(0.1)
-
             caer()
 
 ########################################
@@ -259,7 +401,8 @@ def menu():
         print("1 - Calibrar zonas")
         print("2 - Ejecutar bot")
         print("3 - Ver detección")
-        print("4 - Salir")
+        print("4 - Calibrar colores")
+        print("5 - Salir")
 
         op = input("> ")
 
@@ -273,10 +416,15 @@ def menu():
             visualizar_zonas()
 
         elif op == "4":
+            calibrar_colores()
+
+        elif op == "5":
             break
 
 ########################################
 
 if __name__ == "__main__":
+    cargar_colores_calibrados()
     menu()
-    print("ya")
+
+print("exito")

@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import mss
 import json
-from pynput.keyboard import Controller
+from pynput.keyboard import Controller, Key, Listener
 import time
 
 keyboard = Controller()
@@ -12,69 +12,206 @@ CONFIG_FILE = "tetrio_config.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
 
+COLOR_TOLERANCE = 30
+
+BOARD_ROWS = 20
+BOARD_COLS = 10
+
 ########################################
-# COLORES DE PIEZAS (mezcla solicitada)
+# COLORES DE PIEZAS
 ########################################
 
 TETROMINO_COLORS = {
-
-    # DE TU CÓDIGO
-    "I": np.array([255,255,0]),    # cyan
-    "Z": np.array([75,68,191]),      # red
-    "J": np.array([255,0,0]),      # blue
-    "L": np.array([66,115,196]),    # orange
-
-    # DEL CÓDIGO NUEVO
-    "O": np.array([84,178,200]),    # yellow
-    "T": np.array([163,64,173]),    # purple
-    "S": np.array((59, 244, 175))       # green
+    "I": np.array([255,255,0]),
+    "Z": np.array([75,68,191]),
+    "J": np.array([255,0,0]),
+    "L": np.array([66,115,196]),
+    "O": np.array([84,178,200]),
+    "T": np.array([163,64,173]),
+    "S": np.array([55,255,175])
 }
 
 ########################################
-# CAPTURA DE PANTALLA
+# FORMAS DE PIEZAS
 ########################################
 
-def capture_screen(region=None):
+PIECES = {
+
+"I":[
+[[1,1,1,1]],
+[[1],[1],[1],[1]]
+],
+
+"O":[
+[[1,1],
+ [1,1]]
+],
+
+"T":[
+[[0,1,0],
+ [1,1,1]],
+
+[[1,0],
+ [1,1],
+ [1,0]],
+
+[[1,1,1],
+ [0,1,0]],
+
+[[0,1],
+ [1,1],
+ [0,1]]
+]
+}
+
+bot_activo = False
+alt_presionado = False
+
+########################################
+# CONTROL ALT+C
+########################################
+
+def on_press(key):
+
+    global bot_activo
+    global alt_presionado
+
+    if key == Key.alt_l or key == Key.alt_r:
+        alt_presionado = True
+
+    try:
+        if key.char == 'c' and alt_presionado:
+            print("\nBot detenido (ALT+C)")
+            bot_activo = False
+    except:
+        pass
+
+
+def on_release(key):
+
+    global alt_presionado
+
+    if key == Key.alt_l or key == Key.alt_r:
+        alt_presionado = False
+
+########################################
+# CAPTURA
+########################################
+
+def capturar_region(x, y, w, h):
 
     with mss.mss() as sct:
 
-        if region is None:
-            monitor = sct.monitors[1]
-        else:
-            monitor = {
-                "top": region[1],
-                "left": region[0],
-                "width": region[2],
-                "height": region[3]
-            }
+        monitor = {
+            "top": y,
+            "left": x,
+            "width": w,
+            "height": h
+        }
 
-        screenshot = sct.grab(monitor)
-        img = np.array(screenshot)
-
+        img = np.array(sct.grab(monitor))
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
 ########################################
-# CLASIFICACIÓN DE PIEZA
+# CONTROLES
+########################################
+
+def presionar_rotar():
+
+    keyboard.press('x')
+    keyboard.release('x')
+
+def hard_drop():
+
+    keyboard.press(Key.space)
+    keyboard.release(Key.space)
+
+########################################
+# CONFIG
+########################################
+
+def cargar_config():
+
+    if not os.path.exists(CONFIG_PATH):
+        print("No existe configuración. Ejecuta calibración.")
+        return None
+
+    with open(CONFIG_PATH) as f:
+        return json.load(f)
+
+########################################
+# TABLERO
+########################################
+
+def obtener_tamano_celda(region_tablero):
+
+    width = region_tablero[2]
+    height = region_tablero[3]
+
+    return width / BOARD_COLS, height / BOARD_ROWS
+
+
+def obtener_zona_spawn(tablero_region):
+
+    cell_w, cell_h = obtener_tamano_celda(tablero_region)
+
+    return (
+        tablero_region[0],
+        int(tablero_region[1] - cell_h * 3),
+        tablero_region[2],
+        int(cell_h * 3)
+    )
+
+########################################
+# MATRIZ TABLERO
+########################################
+
+def obtener_matriz_tablero(tablero_img, region_tablero):
+
+    matriz = np.zeros((BOARD_ROWS, BOARD_COLS), dtype=int)
+
+    gray = cv2.cvtColor(tablero_img, cv2.COLOR_BGR2GRAY)
+
+    cell_w, cell_h = obtener_tamano_celda(region_tablero)
+
+    for fila in range(BOARD_ROWS):
+        for col in range(BOARD_COLS):
+
+            x1 = int(col * cell_w)
+            y1 = int(fila * cell_h)
+            x2 = int(x1 + cell_w)
+            y2 = int(y1 + cell_h)
+
+            if y2 > tablero_img.shape[0] or x2 > tablero_img.shape[1]:
+                continue
+
+            celda = gray[y1:y2, x1:x2]
+
+            if np.mean(celda) > 40:
+                matriz[fila][col] = 1
+
+    return matriz
+
+########################################
+# CLASIFICAR PIEZA
 ########################################
 
 def clasificar_pieza(img, contorno, x, y, w, h):
 
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    cv2.drawContours(mask,[contorno],-1,255,-1)
+    cv2.drawContours(mask, [contorno], -1, 255, -1)
 
     mean_color = cv2.mean(img, mask=mask)[:3]
     mean_color = np.array(mean_color)
 
     ratio = w / h if h != 0 else 1
 
-    # detectar I por forma
     if ratio > 2.5 or ratio < 0.4:
         return "I"
 
-    # detectar O por forma
     if 0.8 < ratio < 1.2:
         dist_o = np.linalg.norm(mean_color - TETROMINO_COLORS["O"])
-        if dist_o < 60:
+        if dist_o < COLOR_TOLERANCE:
             return "O"
 
     mejor = None
@@ -84,29 +221,24 @@ def clasificar_pieza(img, contorno, x, y, w, h):
 
         dist = np.linalg.norm(mean_color - color)
 
-        if dist < mejor_dist:
+        if dist < mejor_dist and dist < COLOR_TOLERANCE:
             mejor_dist = dist
             mejor = pieza
 
     return mejor
 
 ########################################
-# DETECCIÓN DE PIEZAS
+# DETECTAR PIEZAS
 ########################################
 
 def detectar_piezas(img):
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
     blur = cv2.GaussianBlur(gray,(5,5),0)
 
     _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
 
-    contornos,_ = cv2.findContours(
-        th,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
+    contornos,_ = cv2.findContours(th,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
 
     piezas = []
 
@@ -114,172 +246,128 @@ def detectar_piezas(img):
 
         area = cv2.contourArea(c)
 
-        if area < 80:   # permite detectar NEXT
+        if area < 80:
             continue
 
         x,y,w,h = cv2.boundingRect(c)
 
         tipo = clasificar_pieza(img,c,x,y,w,h)
 
-        piezas.append((x,y,w,h,tipo))
+        if tipo is not None:
+            piezas.append((x,y,w,h,tipo))
 
     return piezas
 
 ########################################
-# CALIBRACIÓN
+# LOGICA TETRIS
 ########################################
 
-drawing = False
-ix, iy = -1, -1
-rect = None
+def puede_colocar(board, piece, row, col):
 
-def draw_rectangle(event, x, y, flags, param):
+    for r in range(len(piece)):
+        for c in range(len(piece[0])):
 
-    global ix, iy, drawing, rect
+            if piece[r][c] == 0:
+                continue
 
-    if event == cv2.EVENT_LBUTTONDOWN:
-        drawing = True
-        ix, iy = x, y
+            br = row + r
+            bc = col + c
 
-    elif event == cv2.EVENT_MOUSEMOVE:
-        if drawing:
-            img_copy = param.copy()
-            cv2.rectangle(img_copy,(ix,iy),(x,y),(0,255,0),2)
-            cv2.imshow("calibracion",img_copy)
+            if br >= BOARD_ROWS or bc < 0 or bc >= BOARD_COLS:
+                return False
 
-    elif event == cv2.EVENT_LBUTTONUP:
-        drawing = False
-        rect = (ix,iy,x-ix,y-iy)
-        cv2.rectangle(param,(ix,iy),(x,y),(0,255,0),2)
-        cv2.imshow("calibracion",param)
+            if board[br][bc] == 1:
+                return False
 
-def calibrar_area(nombre):
+    return True
 
-    global rect
 
-    time.sleep(0.5)
-    screen = capture_screen()
+def calcular_drop(board, piece, col):
 
-    rect = None
+    row = 0
 
-    cv2.namedWindow("calibracion")
-    cv2.setMouseCallback("calibracion",draw_rectangle,screen)
+    while puede_colocar(board, piece, row+1, col):
 
-    print(f"\nSelecciona el area de {nombre}")
-    print("Arrastra con el mouse y presiona 's'")
+        row += 1
 
-    while True:
-
-        cv2.imshow("calibracion",screen)
-        key = cv2.waitKey(1)
-
-        if key == ord('s') and rect is not None:
+        if row + len(piece) >= BOARD_ROWS:
             break
 
-    cv2.destroyAllWindows()
+    return row
 
-    return rect
 
-def modo_calibracion():
+def evaluar_tablero(board):
 
-    config = {}
+    alturas = []
 
-    config["tablero"] = calibrar_area("TABLERO")
-    config["siguientes"] = calibrar_area("SIGUIENTES")
-    config["hold"] = calibrar_area("HOLD")
+    for c in range(BOARD_COLS):
 
-    with open(CONFIG_PATH,"w") as f:
-        json.dump(config,f)
+        altura = 0
 
-    print("Calibración guardada")
+        for r in range(BOARD_ROWS):
 
-########################################
-# DIBUJAR PIEZAS (SIN CENTROIDE)
-########################################
+            if board[r][c] == 1:
+                altura = BOARD_ROWS - r
+                break
 
-def dibujar_piezas(screen,region,piezas,color):
+        alturas.append(altura)
 
-    x_offset = region[0]
-    y_offset = region[1]
+    return sum(alturas)
 
-    for (x,y,w,h,tipo) in piezas:
 
-        px = x + x_offset
-        py = y + y_offset
+def mejor_movimiento(board, pieza):
 
-        cv2.putText(
-            screen,
-            tipo,
-            (px,py),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            color,
-            2,
-            cv2.LINE_AA
-        )
+    mejor_score = 1e9
+    mejor_col = 0
+    mejor_rot = 0
 
-########################################
-# VISUALIZACIÓN
-########################################
+    for rot,forma in enumerate(PIECES[pieza]):
 
-def visualizar_zonas():
+        ancho = len(forma[0])
 
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
+        for col in range(BOARD_COLS - ancho + 1):
 
-    print("Visualización en vivo (q para salir)")
+            row = calcular_drop(board, forma, col)
 
-    while True:
+            sim = board.copy()
 
-        screen = capture_screen()
+            for r in range(len(forma)):
+                for c in range(ancho):
 
-        t = config["tablero"]
-        s = config["siguientes"]
-        h = config["hold"]
+                    if forma[r][c] == 1:
+                        sim[row+r][col+c] = 1
 
-        tablero_img = capture_screen(t)
-        siguientes_img = capture_screen(s)
-        hold_img = capture_screen(h)
+            score = evaluar_tablero(sim)
 
-        piezas_t = detectar_piezas(tablero_img)
-        piezas_s = detectar_piezas(siguientes_img)
-        piezas_h = detectar_piezas(hold_img)
+            if score < mejor_score:
 
-        cv2.rectangle(screen,(t[0],t[1]),(t[0]+t[2],t[1]+t[3]),(0,255,0),2)
-        dibujar_piezas(screen,t,piezas_t,(0,255,0))
+                mejor_score = score
+                mejor_col = col
+                mejor_rot = rot
 
-        cv2.rectangle(screen,(s[0],s[1]),(s[0]+s[2],s[1]+s[3]),(255,0,0),2)
-        dibujar_piezas(screen,s,piezas_s,(255,0,0))
-
-        cv2.rectangle(screen,(h[0],h[1]),(h[0]+h[2],h[1]+h[3]),(0,165,255),2)
-        dibujar_piezas(screen,h,piezas_h,(0,165,255))
-
-        cv2.imshow("deteccion tetrio",screen)
-
-        if cv2.waitKey(1) == ord('q'):
-            break
-
-    cv2.destroyAllWindows()
+    return mejor_col, mejor_rot
 
 ########################################
-# MOVIMIENTOS
+# MOVIMIENTO
 ########################################
 
-def mover_izquierda():
-    keyboard.press('left')
-    keyboard.release('left')
+def mover_a_columna(col_objetivo):
 
-def mover_derecha():
-    keyboard.press('right')
-    keyboard.release('right')
+    centro = BOARD_COLS // 2
 
-def rotar():
-    keyboard.press('x')
-    keyboard.release('x')
+    diff = col_objetivo - centro
 
-def caer():
-    keyboard.press('space')
-    keyboard.release('space')
+    if diff > 0:
+        for _ in range(diff):
+            keyboard.press(Key.right)
+            keyboard.release(Key.right)
+            time.sleep(0.02)
+
+    elif diff < 0:
+        for _ in range(abs(diff)):
+            keyboard.press(Key.left)
+            keyboard.release(Key.left)
+            time.sleep(0.02)
 
 ########################################
 # BOT
@@ -287,29 +375,69 @@ def caer():
 
 def ejecutar_bot():
 
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
+    global config
+    global bot_activo
 
-    print("Bot iniciado")
+    config = cargar_config()
 
-    while True:
+    if config is None:
+        return
 
-        siguientes = capture_screen(config["siguientes"])
+    print("\nBOT INICIADO")
+    print("ALT+C para detener el bot")
 
-        piezas = detectar_piezas(siguientes)
+    tablero = config["tablero"]
+    spawn = obtener_zona_spawn(tablero)
 
-        if len(piezas) > 0:
+    bot_activo = True
 
-            mover_izquierda()
-            time.sleep(0.1)
+    listener = Listener(on_press=on_press, on_release=on_release)
+    listener.start()
 
-            rotar()
-            time.sleep(0.1)
+    while bot_activo:
 
-            caer()
+        spawn_img = capturar_region(
+            spawn[0],
+            spawn[1],
+            spawn[2],
+            spawn[3]
+        )
+
+        piezas = detectar_piezas(spawn_img)
+
+        if len(piezas) == 0:
+            continue
+
+        pieza = piezas[0][4]
+
+        if pieza not in PIECES:
+            continue
+
+        tablero_img = capturar_region(
+            tablero[0],
+            tablero[1],
+            tablero[2],
+            tablero[3]
+        )
+
+        grid = obtener_matriz_tablero(tablero_img, tablero)
+
+        columna, rotaciones = mejor_movimiento(grid, pieza)
+
+        for _ in range(rotaciones):
+            presionar_rotar()
+            time.sleep(0.05)
+
+        mover_a_columna(columna)
+
+        hard_drop()
+
+        time.sleep(0.05)
+
+    listener.stop()
 
 ########################################
-# MENÚ
+# MENU
 ########################################
 
 def menu():
@@ -317,27 +445,23 @@ def menu():
     while True:
 
         print("\nBOT TETRIO")
-        print("1 - Calibrar zonas")
-        print("2 - Ejecutar bot")
-        print("3 - Ver detección")
-        print("4 - Salir")
+        print("1 - Ejecutar bot")
+        print("2 - Calibrar zonas")
+        print("3 - Salir")
 
         op = input("> ")
 
         if op == "1":
-            modo_calibracion()
-
-        elif op == "2":
             ejecutar_bot()
 
-        elif op == "3":
-            visualizar_zonas()
+        elif op == "2":
+            print("Calibración no incluida en esta versión")
 
-        elif op == "4":
+        elif op == "3":
             break
 
 ########################################
 
 if __name__ == "__main__":
+
     menu()
-    print("ya")
