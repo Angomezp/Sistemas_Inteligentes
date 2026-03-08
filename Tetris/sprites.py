@@ -1,3 +1,5 @@
+#Zona rosada, malla y deteccion de letras agregada
+
 import os
 import cv2
 import numpy as np
@@ -16,7 +18,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
 # TOLERANCIA DE COLOR
 ########################################
 
-COLOR_TOLERANCE = 30
+COLOR_TOLERANCE = 35
 
 ########################################
 # CONFIGURACION TABLERO
@@ -24,13 +26,13 @@ COLOR_TOLERANCE = 30
 
 BOARD_ROWS = 20
 BOARD_COLS = 10
+SPAWN_ROWS = 2
 
 ########################################
-# COLORES DE PIEZAS (por defecto)
+# COLORES DE PIEZAS
 ########################################
 
 TETROMINO_COLORS = {
-
     "I": np.array([255,255,0]),
     "Z": np.array([75,68,191]),
     "J": np.array([255,0,0]),
@@ -62,314 +64,6 @@ def capture_screen(region=None):
         img = np.array(screenshot)
 
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-
-########################################
-# CALCULAR TAMAÑO DE CELDA DINÁMICO
-########################################
-
-def obtener_tamano_celda(region_tablero):
-
-    width = region_tablero[2]
-    height = region_tablero[3]
-
-    cell_w = width / BOARD_COLS
-    cell_h = height / BOARD_ROWS
-
-    return cell_w, cell_h
-
-
-########################################
-# ZONA SPAWN
-########################################
-
-def obtener_zona_spawn(tablero_region):
-
-    cell_w, cell_h = obtener_tamano_celda(tablero_region)
-
-    return (
-        tablero_region[0],
-        int(tablero_region[1] - cell_h * 3),
-        tablero_region[2],
-        int(cell_h * 3)
-    )
-
-
-########################################
-# MATRIZ DEL TABLERO
-########################################
-
-def obtener_matriz_tablero(tablero_img, region_tablero):
-
-    matriz = np.zeros((BOARD_ROWS, BOARD_COLS), dtype=int)
-
-    gray = cv2.cvtColor(tablero_img, cv2.COLOR_BGR2GRAY)
-
-    cell_w, cell_h = obtener_tamano_celda(region_tablero)
-
-    for fila in range(BOARD_ROWS):
-        for col in range(BOARD_COLS):
-
-            x1 = int(col * cell_w)
-            y1 = int(fila * cell_h)
-
-            x2 = int(x1 + cell_w)
-            y2 = int(y1 + cell_h)
-
-            if y2 > tablero_img.shape[0] or x2 > tablero_img.shape[1]:
-                continue
-
-            celda = gray[y1:y2, x1:x2]
-
-            promedio = np.mean(celda)
-
-            if promedio > 40:
-                matriz[fila][col] = 1
-            else:
-                matriz[fila][col] = 0
-
-    return matriz
-
-########################################
-# DIBUJAR MALLA
-########################################
-
-def dibujar_malla(screen, region):
-
-    cell_w, cell_h = obtener_tamano_celda(region)
-
-    x_offset = region[0]
-    y_offset = region[1]
-
-    for c in range(BOARD_COLS + 1):
-
-        x = int(x_offset + c * cell_w)
-
-        cv2.line(
-            screen,
-            (x, y_offset),
-            (x, int(y_offset + BOARD_ROWS * cell_h)),
-            (255,255,255),
-            1
-        )
-
-    for r in range(BOARD_ROWS + 1):
-
-        y = int(y_offset + r * cell_h)
-
-        cv2.line(
-            screen,
-            (x_offset, y),
-            (int(x_offset + BOARD_COLS * cell_w), y),
-            (255,255,255),
-            1
-        )
-
-########################################
-# DIBUJAR OCUPACION
-########################################
-
-def dibujar_ocupacion(screen, region, matriz):
-
-    cell_w, cell_h = obtener_tamano_celda(region)
-
-    x_offset = region[0]
-    y_offset = region[1]
-
-    for r in range(BOARD_ROWS):
-        for c in range(BOARD_COLS):
-
-            if matriz[r][c] == 1:
-
-                cx = int(x_offset + c * cell_w + cell_w/2)
-                cy = int(y_offset + r * cell_h + cell_h/2)
-
-                cv2.circle(
-                    screen,
-                    (cx,cy),
-                    4,
-                    (0,255,255),
-                    -1
-                )
-
-########################################
-# CARGAR COLORES CALIBRADOS
-########################################
-
-def cargar_colores_calibrados():
-
-    global TETROMINO_COLORS
-    global COLOR_TOLERANCE
-
-    if not os.path.exists(CONFIG_PATH):
-        return
-
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
-
-    if "colores" in config:
-
-        for pieza,color in config["colores"].items():
-            TETROMINO_COLORS[pieza] = np.array(color)
-
-    if "tolerancia_color" in config:
-        COLOR_TOLERANCE = config["tolerancia_color"]
-
-########################################
-# CLASIFICACIÓN DE PIEZA
-########################################
-
-def clasificar_pieza(img, contorno, x, y, w, h):
-
-    mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    cv2.drawContours(mask,[contorno],-1,255,-1)
-
-    mean_color = cv2.mean(img, mask=mask)[:3]
-    mean_color = np.array(mean_color)
-
-    ratio = w / h if h != 0 else 1
-
-    if ratio > 2.5 or ratio < 0.4:
-        return "I"
-
-    if 0.8 < ratio < 1.2:
-        dist_o = np.linalg.norm(mean_color - TETROMINO_COLORS["O"])
-        if dist_o < COLOR_TOLERANCE:
-            return "O"
-
-    mejor = None
-    mejor_dist = 1e9
-
-    for pieza, color in TETROMINO_COLORS.items():
-
-        dist = np.linalg.norm(mean_color - color)
-
-        if dist < mejor_dist and dist < COLOR_TOLERANCE:
-            mejor_dist = dist
-            mejor = pieza
-
-    return mejor
-
-########################################
-# DETECCIÓN DE PIEZAS
-########################################
-
-def detectar_piezas(img):
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    blur = cv2.GaussianBlur(gray,(5,5),0)
-
-    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
-
-    contornos,_ = cv2.findContours(
-        th,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    piezas = []
-
-    for c in contornos:
-
-        area = cv2.contourArea(c)
-
-        if area < 80:
-            continue
-
-        x,y,w,h = cv2.boundingRect(c)
-
-        tipo = clasificar_pieza(img,c,x,y,w,h)
-
-        piezas.append((x,y,w,h,tipo))
-
-    return piezas
-########################################
-# VISUALIZAR ZONAS
-########################################
-
-def visualizar_zonas():
-
-    with open(CONFIG_PATH) as f:
-        config = json.load(f)
-
-    print("Visualización en vivo (q para salir)")
-
-    tablero = config["tablero"]
-    spawn = obtener_zona_spawn(tablero)
-
-    while True:
-
-        screen = capture_screen()
-
-        t = tablero
-        s = config["siguientes"]
-        h = config["hold"]
-
-        tablero_img = capture_screen(t)
-
-        matriz_tablero = obtener_matriz_tablero(tablero_img, t)
-
-        ########################################
-        # TABLERO (VERDE)
-        ########################################
-
-        cv2.rectangle(
-            screen,
-            (t[0],t[1]),
-            (t[0]+t[2],t[1]+t[3]),
-            (0,255,0),
-            2
-        )
-
-        ########################################
-        # ZONA SPAWN (ROSADA)
-        ########################################
-
-        cv2.rectangle(
-            screen,
-            (spawn[0],spawn[1]),
-            (spawn[0]+spawn[2],spawn[1]+spawn[3]),
-            (255,0,255),
-            2
-        )
-
-        ########################################
-
-        dibujar_malla(screen, t)
-
-        dibujar_ocupacion(screen, t, matriz_tablero)
-
-        ########################################
-
-        cv2.rectangle(
-            screen,
-            (s[0],s[1]),
-            (s[0]+s[2],s[1]+s[3]),
-            (255,0,0),
-            2
-        )
-
-        cv2.rectangle(
-            screen,
-            (h[0],h[1]),
-            (h[0]+h[2],h[1]+h[3]),
-            (0,165,255),
-            2
-        )
-
-        ########################################
-
-        cv2.imshow("deteccion tetrio",screen)
-
-        if cv2.waitKey(1) == ord('q'):
-            break
-
-    cv2.destroyAllWindows()
-
-########################################
-# CALIBRACIÓN DE ZONAS
-########################################
-
 drawing = False
 ix, iy = -1, -1
 rect = None
@@ -503,24 +197,311 @@ def calibrar_colores():
 
 
 ########################################
-# MOVIMIENTOS
+# CALCULAR TAMAÑO DE CELDA
 ########################################
 
-def mover_izquierda():
-    keyboard.press('left')
-    keyboard.release('left')
+def obtener_tamano_celda(region_tablero):
 
-def mover_derecha():
-    keyboard.press('right')
-    keyboard.release('right')
+    width = region_tablero[2]
+    height = region_tablero[3]
 
-def rotar():
-    keyboard.press('x')
-    keyboard.release('x')
+    cell_w = width / BOARD_COLS
+    cell_h = height / BOARD_ROWS
 
-def caer():
-    keyboard.press('space')
-    keyboard.release('space')
+    return cell_w, cell_h
+########################################
+# OBTENER ZONA SPAWN (3 FILAS ARRIBA)
+########################################
+
+def obtener_region_spawn(region_tablero):
+
+    cell_w, cell_h = obtener_tamano_celda(region_tablero)
+
+    spawn_height = int(cell_h * SPAWN_ROWS)
+
+    spawn_region = (
+        region_tablero[0],
+        int(region_tablero[1] - spawn_height),
+        region_tablero[2],
+        spawn_height
+    )
+
+    return spawn_region
+########################################
+# MATRIZ TABLERO
+########################################
+
+def obtener_matriz_tablero(tablero_img, region_tablero):
+
+    matriz = np.zeros((BOARD_ROWS, BOARD_COLS), dtype=int)
+
+    gray = cv2.cvtColor(tablero_img, cv2.COLOR_BGR2GRAY)
+
+    cell_w, cell_h = obtener_tamano_celda(region_tablero)
+
+    for fila in range(BOARD_ROWS):
+        for col in range(BOARD_COLS):
+
+            x1 = int(col * cell_w)
+            y1 = int(fila * cell_h)
+
+            x2 = int(x1 + cell_w)
+            y2 = int(y1 + cell_h)
+
+            if y2 > tablero_img.shape[0] or x2 > tablero_img.shape[1]:
+                continue
+
+            celda = gray[y1:y2, x1:x2]
+
+            promedio = np.mean(celda)
+
+            if promedio > 40:
+                matriz[fila][col] = 1
+            else:
+                matriz[fila][col] = 0
+
+    return matriz
+
+########################################
+# DIBUJAR MALLA
+########################################
+
+def dibujar_malla(screen, region):
+
+    cell_w, cell_h = obtener_tamano_celda(region)
+
+    x_offset = region[0]
+    y_offset = region[1]
+
+    for c in range(BOARD_COLS + 1):
+
+        x = int(x_offset + c * cell_w)
+
+        cv2.line(
+            screen,
+            (x, y_offset),
+            (x, int(y_offset + BOARD_ROWS * cell_h)),
+            (255,255,255),
+            1
+        )
+
+    for r in range(BOARD_ROWS + 1):
+
+        y = int(y_offset + r * cell_h)
+
+        cv2.line(
+            screen,
+            (x_offset, y),
+            (int(x_offset + BOARD_COLS * cell_w), y),
+            (255,255,255),
+            1
+        )
+
+########################################
+# DIBUJAR OCUPACION
+########################################
+
+def dibujar_ocupacion(screen, region, matriz):
+
+    cell_w, cell_h = obtener_tamano_celda(region)
+
+    x_offset = region[0]
+    y_offset = region[1]
+
+    for r in range(BOARD_ROWS):
+        for c in range(BOARD_COLS):
+
+            if matriz[r][c] == 1:
+
+                cx = int(x_offset + c * cell_w + cell_w/2)
+                cy = int(y_offset + r * cell_h + cell_h/2)
+
+                cv2.circle(
+                    screen,
+                    (cx,cy),
+                    4,
+                    (0,255,255),
+                    -1
+                )
+
+########################################
+# DIBUJAR PIEZAS (AGREGADO DEL SEGUNDO CODIGO)
+########################################
+
+def dibujar_piezas(screen,region,piezas,color):
+
+    x_offset = region[0]
+    y_offset = region[1]
+
+    for (x,y,w,h,tipo) in piezas:
+
+        px = x + x_offset
+        py = y + y_offset
+
+        cv2.putText(
+            screen,
+            tipo,
+            (px,py),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            color,
+            2,
+            cv2.LINE_AA
+        )
+
+########################################
+# CARGAR COLORES
+########################################
+
+def cargar_colores_calibrados():
+
+    global TETROMINO_COLORS
+    global COLOR_TOLERANCE
+
+    if not os.path.exists(CONFIG_PATH):
+        return
+
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    if "colores" in config:
+
+        for pieza,color in config["colores"].items():
+            TETROMINO_COLORS[pieza] = np.array(color)
+
+    if "tolerancia_color" in config:
+        COLOR_TOLERANCE = config["tolerancia_color"]
+
+########################################
+# CLASIFICAR PIEZA
+########################################
+
+def clasificar_pieza(img, contorno, x, y, w, h):
+
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask,[contorno],-1,255,-1)
+
+    mean_color = cv2.mean(img, mask=mask)[:3]
+    mean_color = np.array(mean_color)
+
+    ratio = w / h if h != 0 else 1
+
+    if ratio > 2.5 or ratio < 0.4:
+        return "I"
+
+    if 0.8 < ratio < 1.2:
+        dist_o = np.linalg.norm(mean_color - TETROMINO_COLORS["O"])
+        if dist_o < COLOR_TOLERANCE:
+            return "O"
+
+    mejor = None
+    mejor_dist = 1e9
+
+    for pieza, color in TETROMINO_COLORS.items():
+
+        dist = np.linalg.norm(mean_color - color)
+
+        if dist < mejor_dist and dist < COLOR_TOLERANCE:
+            mejor_dist = dist
+            mejor = pieza
+
+    return mejor
+
+########################################
+# DETECTAR PIEZAS
+########################################
+
+def detectar_piezas(img):
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    blur = cv2.GaussianBlur(gray,(5,5),0)
+
+    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
+
+    contornos,_ = cv2.findContours(
+        th,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    piezas = []
+
+    for c in contornos:
+
+        area = cv2.contourArea(c)
+
+        if area < 80:
+            continue
+
+        x,y,w,h = cv2.boundingRect(c)
+
+        tipo = clasificar_pieza(img,c,x,y,w,h)
+
+        piezas.append((x,y,w,h,tipo))
+
+    return piezas
+
+########################################
+# VISUALIZACIÓN
+########################################
+
+def visualizar_zonas():
+
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    print("Visualización en vivo (q para salir)")
+
+    while True:
+
+        screen = capture_screen()
+
+        t = config["tablero"]
+        s = config["siguientes"]
+        h = config["hold"]
+
+        spawn_region = obtener_region_spawn(t)
+
+        tablero_img = capture_screen(t)
+        spawn_img = capture_screen(spawn_region)
+
+        siguientes_img = capture_screen(s)
+        hold_img = capture_screen(h)
+
+        matriz_tablero = obtener_matriz_tablero(tablero_img, t)
+
+        piezas_spawn = detectar_piezas(spawn_img)
+        piezas_s = detectar_piezas(siguientes_img)
+        piezas_h = detectar_piezas(hold_img)
+
+        cv2.rectangle(screen,(t[0],t[1]),(t[0]+t[2],t[1]+t[3]),(0,255,0),2)
+        # zona spawn rosada
+        spawn = obtener_region_spawn(t)
+
+        cv2.rectangle(
+            screen,
+            (spawn[0], spawn[1]),
+            (spawn[0] + spawn[2], spawn[1] + spawn[3]),
+            (255,105,180),
+            2
+        )
+        dibujar_malla(screen, t)
+        dibujar_ocupacion(screen, t, matriz_tablero)
+        dibujar_piezas(screen,spawn,piezas_spawn,(255,105,180))
+
+        cv2.rectangle(screen,(s[0],s[1]),(s[0]+s[2],s[1]+s[3]),(255,0,0),2)
+        dibujar_piezas(screen,s,piezas_s,(255,0,0))
+
+        cv2.rectangle(screen,(h[0],h[1]),(h[0]+h[2],h[1]+h[3]),(0,165,255),2)
+        dibujar_piezas(screen,h,piezas_h,(0,165,255))
+
+        cv2.imshow("deteccion tetrio",screen)
+
+        if cv2.waitKey(1) == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
 
 ########################################
 # BOT
@@ -541,13 +522,16 @@ def ejecutar_bot():
 
         if len(piezas) > 0:
 
-            mover_izquierda()
+            keyboard.press('left')
+            keyboard.release('left')
             time.sleep(0.1)
 
-            rotar()
+            keyboard.press('x')
+            keyboard.release('x')
             time.sleep(0.1)
 
-            caer()
+            keyboard.press('space')
+            keyboard.release('space')
 
 ########################################
 # MENÚ
@@ -587,4 +571,5 @@ if __name__ == "__main__":
 
     cargar_colores_calibrados()
     menu()
-    print("ya")
+
+print("exito")
