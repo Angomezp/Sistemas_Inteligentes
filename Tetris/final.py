@@ -18,7 +18,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
 # TOLERANCIA DE COLOR
 ########################################
 
-COLOR_TOLERANCE = 35
+COLOR_TOLERANCE = 30
 
 ########################################
 # CONFIGURACION TABLERO
@@ -29,10 +29,22 @@ BOARD_COLS = 10
 SPAWN_ROWS = 4
 
 ########################################
-# COLORES DE PIEZAS
+# COLORES DE PIEZAS POR ZONA
 ########################################
 
-TETROMINO_COLORS = {
+# Colores para zona spawn (arriba del tablero)
+SPAWN_COLORS = {
+    "I": np.array([255,255,0]),
+    "Z": np.array([75,68,191]),
+    "J": np.array([255,0,0]),
+    "L": np.array([66,115,196]),
+    "O": np.array([84,178,200]),
+    "T": np.array([163,64,173]),
+    "S": np.array([55,255,175])
+}
+
+# Colores para zona next/hold
+NEXT_HOLD_COLORS = {
     "I": np.array([255,255,0]),
     "Z": np.array([75,68,191]),
     "J": np.array([255,0,0]),
@@ -119,15 +131,33 @@ def modo_calibracion():
     print("Calibración guardada")
 
 ########################################
-# CALIBRACIÓN DE COLORES
+# CALIBRACIÓN DE COLORES - SPAWN
 ########################################
 
-def calibrar_colores():
-    print("\nCalibración de colores")
-    print("Haz click sobre cada pieza cuando se te indique")
-
+def calibrar_colores_spawn():
+    print("\nCalibración de colores - ZONA SPAWN")
+    print("Haz click sobre cada pieza cuando se te indique (asegúrate de que esté en la zona de spawn)")
+    
+    # Usar la zona de spawn para capturar
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+    
+    # Calcular zona spawn
+    t = config["tablero"]
+    cell_w, cell_h = obtener_tamano_celda(t)
+    spawn_height = int(cell_h * SPAWN_ROWS)
+    
+    spawn_region = (
+        t[0],
+        t[1] - spawn_height,
+        t[2],
+        spawn_height
+    )
+    
+    # Capturar imagen de la zona spawn
+    screen = capture_screen(spawn_region)
+    
     piezas_orden = ["I","J","L","O","S","T","Z"]
-    screen = capture_screen()
     colores = {}
     indice = [0]
 
@@ -135,41 +165,107 @@ def calibrar_colores():
         if event == cv2.EVENT_LBUTTONDOWN:
             pieza_actual = piezas_orden[indice[0]]
             color = screen[y,x]
-            print(f"Color capturado para {pieza_actual}: {color}")
+            print(f"Color capturado para {pieza_actual} (spawn): {color}")
             colores[pieza_actual] = color.tolist()
             indice[0] += 1
 
             if indice[0] < len(piezas_orden):
-                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]}")
+                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]} en zona spawn")
             else:
-                print("Todas las piezas capturadas")
+                print("Todas las piezas de spawn capturadas")
 
-    cv2.namedWindow("calibrar_colores")
-    cv2.setMouseCallback("calibrar_colores",click)
+    cv2.namedWindow("calibrar_colores_spawn")
+    cv2.setMouseCallback("calibrar_colores_spawn",click)
 
-    print(f"Haz click sobre la pieza {piezas_orden[0]}")
+    print(f"Haz click sobre la pieza {piezas_orden[0]} en zona spawn")
 
     while True:
-        cv2.imshow("calibrar_colores",screen)
+        cv2.imshow("calibrar_colores_spawn",screen)
         if indice[0] >= len(piezas_orden):
             break
         cv2.waitKey(1)
 
     cv2.destroyAllWindows()
 
+    # Guardar configuración
     if os.path.exists(CONFIG_PATH):
         with open(CONFIG_PATH) as f:
             config = json.load(f)
     else:
         config = {}
 
-    config["colores"] = colores
+    if "colores" not in config:
+        config["colores"] = {}
+    
+    config["colores"]["spawn"] = colores
     config["tolerancia_color"] = COLOR_TOLERANCE
 
     with open(CONFIG_PATH,"w") as f:
-        json.dump(config,f)
+        json.dump(config,f, indent=4)
 
-    print("Colores calibrados y guardados")
+    print("Colores de spawn calibrados y guardados")
+
+########################################
+# CALIBRACIÓN DE COLORES - NEXT/HOLD
+########################################
+
+def calibrar_colores_next_hold():
+    print("\nCalibración de colores - ZONA NEXT/HOLD")
+    print("Haz click sobre cada pieza cuando se te indique (puedes usar la zona de next o hold)")
+    
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+    
+    # Usar la zona de siguientes para capturar (asumiendo que ahí se ven mejor)
+    screen = capture_screen(config["siguientes"])
+    
+    piezas_orden = ["I","J","L","O","S","T","Z"]
+    colores = {}
+    indice = [0]
+
+    def click(event,x,y,flags,param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            pieza_actual = piezas_orden[indice[0]]
+            color = screen[y,x]
+            print(f"Color capturado para {pieza_actual} (next/hold): {color}")
+            colores[pieza_actual] = color.tolist()
+            indice[0] += 1
+
+            if indice[0] < len(piezas_orden):
+                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]} en zona next/hold")
+            else:
+                print("Todas las piezas de next/hold capturadas")
+
+    cv2.namedWindow("calibrar_colores_next_hold")
+    cv2.setMouseCallback("calibrar_colores_next_hold",click)
+
+    print(f"Haz click sobre la pieza {piezas_orden[0]} en zona next/hold")
+
+    while True:
+        cv2.imshow("calibrar_colores_next_hold",screen)
+        if indice[0] >= len(piezas_orden):
+            break
+        cv2.waitKey(1)
+
+    cv2.destroyAllWindows()
+
+    # Guardar configuración
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    else:
+        config = {}
+
+    if "colores" not in config:
+        config["colores"] = {}
+    
+    config["colores"]["next_hold"] = colores
+    config["tolerancia_color"] = COLOR_TOLERANCE
+
+    with open(CONFIG_PATH,"w") as f:
+        json.dump(config,f, indent=4)
+
+    print("Colores de next/hold calibrados y guardados")
 
 ########################################
 # CALCULAR TAMAÑO DE CELDA
@@ -308,12 +404,11 @@ def dibujar_piezas(screen, region, piezas, color, offset_adicional=(0,0)):
         )
 
 ########################################
-# CARGAR COLORES
+# CARGAR COLORES POR ZONA
 ########################################
 
 def cargar_colores_calibrados():
-    global TETROMINO_COLORS
-    global COLOR_TOLERANCE
+    global SPAWN_COLORS, NEXT_HOLD_COLORS, COLOR_TOLERANCE
 
     if not os.path.exists(CONFIG_PATH):
         return
@@ -322,17 +417,24 @@ def cargar_colores_calibrados():
         config = json.load(f)
 
     if "colores" in config:
-        for pieza,color in config["colores"].items():
-            TETROMINO_COLORS[pieza] = np.array(color)
+        if "spawn" in config["colores"]:
+            for pieza, color in config["colores"]["spawn"].items():
+                SPAWN_COLORS[pieza] = np.array(color)
+            print("Colores de spawn cargados")
+        
+        if "next_hold" in config["colores"]:
+            for pieza, color in config["colores"]["next_hold"].items():
+                NEXT_HOLD_COLORS[pieza] = np.array(color)
+            print("Colores de next/hold cargados")
 
     if "tolerancia_color" in config:
         COLOR_TOLERANCE = config["tolerancia_color"]
 
 ########################################
-# CLASIFICAR PIEZA MEJORADA PARA SPAWN
+# CLASIFICAR PIEZA PARA SPAWN
 ########################################
 
-def clasificar_pieza(img, contorno, x, y, w, h):
+def clasificar_pieza_spawn(img, contorno, x, y, w, h):
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
     cv2.drawContours(mask, [contorno], -1, 255, -1)
     
@@ -345,7 +447,7 @@ def clasificar_pieza(img, contorno, x, y, w, h):
     
     # Detección especial para pieza I (muy alargada)
     if ratio > 2.0:
-        dist_i = np.linalg.norm(mean_color - TETROMINO_COLORS["I"])
+        dist_i = np.linalg.norm(mean_color - SPAWN_COLORS["I"])
         if dist_i < COLOR_TOLERANCE * 1.5:
             return "I"
     
@@ -353,7 +455,7 @@ def clasificar_pieza(img, contorno, x, y, w, h):
     mejor = None
     mejor_dist = COLOR_TOLERANCE
     
-    for pieza, color in TETROMINO_COLORS.items():
+    for pieza, color in SPAWN_COLORS.items():
         dist = np.linalg.norm(mean_color - color)
         
         # Dar un pequeño bonus a las piezas que coinciden por forma
@@ -368,12 +470,51 @@ def clasificar_pieza(img, contorno, x, y, w, h):
     return mejor
 
 ########################################
-# DETECTAR PIEZAS EN ZONA SPAWN (VERSIÓN OPTIMIZADA)
+# CLASIFICAR PIEZA PARA NEXT/HOLD
+########################################
+
+def clasificar_pieza_next_hold(img, contorno, x, y, w, h):
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask, [contorno], -1, 255, -1)
+    
+    # Calcular color medio
+    mean_color = cv2.mean(img, mask=mask)[:3]
+    mean_color = np.array(mean_color)
+    
+    # Calcular ratio de aspecto
+    ratio = w / h if h != 0 else 1
+    
+    # Detección especial para pieza I (muy alargada)
+    if ratio > 2.0:
+        dist_i = np.linalg.norm(mean_color - NEXT_HOLD_COLORS["I"])
+        if dist_i < COLOR_TOLERANCE * 1.5:
+            return "I"
+    
+    # Para piezas T, L, J, Z (las problemáticas)
+    mejor = None
+    mejor_dist = COLOR_TOLERANCE
+    
+    for pieza, color in NEXT_HOLD_COLORS.items():
+        dist = np.linalg.norm(mean_color - color)
+        
+        # Dar un pequeño bonus a las piezas que coinciden por forma
+        if pieza in ["T", "L", "J", "Z"]:
+            if 0.7 < ratio < 1.8:
+                dist *= 0.9
+        
+        if dist < mejor_dist:
+            mejor_dist = dist
+            mejor = pieza
+    
+    return mejor
+
+########################################
+# DETECTAR PIEZAS EN ZONA SPAWN
 ########################################
 
 def detectar_piezas_spawn(img):
     """
-    Versión optimizada para spawn con fondo negro y malla visible
+    Versión para spawn que usa SPAWN_COLORS
     """
     if img.size == 0:
         return []
@@ -410,8 +551,8 @@ def detectar_piezas_spawn(img):
         if w < 5 or h < 5:
             continue
         
-        # Clasificar la pieza
-        tipo = clasificar_pieza(img, c, x, y, w, h)
+        # Clasificar la pieza usando colores de spawn
+        tipo = clasificar_pieza_spawn(img, c, x, y, w, h)
         
         if tipo:
             piezas.append((x, y, w, h, tipo))
@@ -419,10 +560,13 @@ def detectar_piezas_spawn(img):
     return piezas
 
 ########################################
-# DETECTAR PIEZAS (VERSIÓN ORIGINAL PARA NEXT Y HOLD)
+# DETECTAR PIEZAS EN NEXT/HOLD
 ########################################
 
-def detectar_piezas(img):
+def detectar_piezas_next_hold(img):
+    """
+    Versión para next/hold que usa NEXT_HOLD_COLORS
+    """
     if img.size == 0:
         return []
     
@@ -444,7 +588,7 @@ def detectar_piezas(img):
             continue
         
         x, y, w, h = cv2.boundingRect(c)
-        tipo = clasificar_pieza(img, c, x, y, w, h)
+        tipo = clasificar_pieza_next_hold(img, c, x, y, w, h)
         
         if tipo:
             piezas.append((x, y, w, h, tipo))
@@ -452,7 +596,7 @@ def detectar_piezas(img):
     return piezas
 
 ########################################
-# VISUALIZACIÓN CORREGIDA
+# VISUALIZACIÓN
 ########################################
 
 def visualizar_zonas():
@@ -486,10 +630,10 @@ def visualizar_zonas():
         siguientes_img = capture_screen(s)
         hold_img = capture_screen(h)
         
-        # Detectar piezas (usar función especializada para spawn)
+        # Detectar piezas (usar funciones específicas por zona)
         piezas_spawn = detectar_piezas_spawn(spawn_img)
-        piezas_s = detectar_piezas(siguientes_img)
-        piezas_h = detectar_piezas(hold_img)
+        piezas_s = detectar_piezas_next_hold(siguientes_img)
+        piezas_h = detectar_piezas_next_hold(hold_img)
         
         # Obtener matriz del tablero
         matriz_tablero = obtener_matriz_tablero(tablero_img, t)
@@ -595,8 +739,8 @@ def visualizar_zonas_debug_spawn():
         
         # Detectar piezas
         piezas_spawn = detectar_piezas_spawn(spawn_img)
-        piezas_s = detectar_piezas(siguientes_img)
-        piezas_h = detectar_piezas(hold_img)
+        piezas_s = detectar_piezas_next_hold(siguientes_img)
+        piezas_h = detectar_piezas_next_hold(hold_img)
         
         # Crear imagen de debug para spawn
         debug_img = spawn_img.copy()
@@ -662,7 +806,7 @@ def ejecutar_bot():
 
     while True:
         siguientes = capture_screen(config["siguientes"])
-        piezas = detectar_piezas(siguientes)
+        piezas = detectar_piezas_next_hold(siguientes)
 
         if len(piezas) > 0:
             keyboard.press('left')
@@ -686,9 +830,10 @@ def menu():
         print("1 - Calibrar zonas")
         print("2 - Ejecutar bot")
         print("3 - Ver detección")
-        print("4 - Calibrar colores")
-        print("5 - Modo debug spawn")
-        print("6 - Salir")
+        print("4 - Calibrar colores SPAWN")
+        print("5 - Calibrar colores NEXT/HOLD")
+        print("6 - Modo debug spawn")
+        print("7 - Salir")
 
         op = input("> ")
 
@@ -699,10 +844,12 @@ def menu():
         elif op == "3":
             visualizar_zonas()
         elif op == "4":
-            calibrar_colores()
+            calibrar_colores_spawn()
         elif op == "5":
-            visualizar_zonas_debug_spawn()
+            calibrar_colores_next_hold()
         elif op == "6":
+            visualizar_zonas_debug_spawn()
+        elif op == "7":
             break
 
 ########################################
