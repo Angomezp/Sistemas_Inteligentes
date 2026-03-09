@@ -1,11 +1,9 @@
-# Antes de colocar parte rosada encima
-# Tiene malla y deteccion de letras
 import os
 import cv2
 import numpy as np
 import mss
 import json
-from pynput.keyboard import Controller
+from pynput.keyboard import Controller, Key
 import time
 
 keyboard = Controller()
@@ -18,7 +16,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
 # TOLERANCIA DE COLOR
 ########################################
 
-COLOR_TOLERANCE = 35
+COLOR_TOLERANCE = 30
 
 ########################################
 # CONFIGURACION TABLERO
@@ -26,13 +24,25 @@ COLOR_TOLERANCE = 35
 
 BOARD_ROWS = 20
 BOARD_COLS = 10
-
+SPAWN_ROWS = 4
 
 ########################################
-# COLORES DE PIEZAS
+# COLORES DE PIEZAS POR ZONA
 ########################################
 
-TETROMINO_COLORS = {
+# Colores para zona spawn (arriba del tablero)
+SPAWN_COLORS = {
+    "I": np.array([255,255,0]),
+    "Z": np.array([75,68,191]),
+    "J": np.array([255,0,0]),
+    "L": np.array([66,115,196]),
+    "O": np.array([84,178,200]),
+    "T": np.array([163,64,173]),
+    "S": np.array([55,255,175])
+}
+
+# Colores para zona next/hold
+NEXT_HOLD_COLORS = {
     "I": np.array([255,255,0]),
     "Z": np.array([75,68,191]),
     "J": np.array([255,0,0]),
@@ -47,9 +57,7 @@ TETROMINO_COLORS = {
 ########################################
 
 def capture_screen(region=None):
-
     with mss.mss() as sct:
-
         if region is None:
             monitor = sct.monitors[1]
         else:
@@ -62,14 +70,13 @@ def capture_screen(region=None):
 
         screenshot = sct.grab(monitor)
         img = np.array(screenshot)
-
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
 drawing = False
 ix, iy = -1, -1
 rect = None
 
 def draw_rectangle(event, x, y, flags, param):
-
     global ix, iy, drawing, rect
 
     if event == cv2.EVENT_LBUTTONDOWN:
@@ -89,12 +96,10 @@ def draw_rectangle(event, x, y, flags, param):
         cv2.imshow("calibracion",param)
 
 def calibrar_area(nombre):
-
     global rect
 
     time.sleep(0.5)
     screen = capture_screen()
-
     rect = None
 
     cv2.namedWindow("calibracion")
@@ -104,21 +109,16 @@ def calibrar_area(nombre):
     print("Arrastra con el mouse y presiona 's'")
 
     while True:
-
         cv2.imshow("calibracion",screen)
         key = cv2.waitKey(1)
-
         if key == ord('s') and rect is not None:
             break
 
     cv2.destroyAllWindows()
-
     return rect
 
 def modo_calibracion():
-
     config = {}
-
     config["tablero"] = calibrar_area("TABLERO")
     config["siguientes"] = calibrar_area("SIGUIENTES")
     config["hold"] = calibrar_area("HOLD")
@@ -129,105 +129,181 @@ def modo_calibracion():
     print("Calibración guardada")
 
 ########################################
-# CALIBRACIÓN DE COLORES
+# CALIBRACIÓN DE COLORES - SPAWN
 ########################################
 
-def calibrar_colores():
-
-    print("\nCalibración de colores")
-    print("Haz click sobre cada pieza cuando se te indique")
-
+def calibrar_colores_spawn():
+    print("\nCalibración de colores - ZONA SPAWN")
+    print("Haz click sobre cada pieza cuando se te indique (asegúrate de que esté en la zona de spawn)")
+    
+    # Usar la zona de spawn para capturar
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+    
+    # Calcular zona spawn
+    t = config["tablero"]
+    cell_w, cell_h = obtener_tamano_celda(t)
+    spawn_height = int(cell_h * SPAWN_ROWS)
+    
+    spawn_region = (
+        t[0],
+        t[1] - spawn_height,
+        t[2],
+        spawn_height
+    )
+    
+    # Capturar imagen de la zona spawn
+    screen = capture_screen(spawn_region)
+    
     piezas_orden = ["I","J","L","O","S","T","Z"]
-
-    screen = capture_screen()
-
     colores = {}
     indice = [0]
 
     def click(event,x,y,flags,param):
-
         if event == cv2.EVENT_LBUTTONDOWN:
-
             pieza_actual = piezas_orden[indice[0]]
-
             color = screen[y,x]
-
-            print(f"Color capturado para {pieza_actual}: {color}")
-
+            print(f"Color capturado para {pieza_actual} (spawn): {color}")
             colores[pieza_actual] = color.tolist()
-
             indice[0] += 1
 
             if indice[0] < len(piezas_orden):
-                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]}")
+                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]} en zona spawn")
             else:
-                print("Todas las piezas capturadas")
+                print("Todas las piezas de spawn capturadas")
 
-    cv2.namedWindow("calibrar_colores")
-    cv2.setMouseCallback("calibrar_colores",click)
+    cv2.namedWindow("calibrar_colores_spawn")
+    cv2.setMouseCallback("calibrar_colores_spawn",click)
 
-    print(f"Haz click sobre la pieza {piezas_orden[0]}")
+    print(f"Haz click sobre la pieza {piezas_orden[0]} en zona spawn")
 
     while True:
-
-        cv2.imshow("calibrar_colores",screen)
-
+        cv2.imshow("calibrar_colores_spawn",screen)
         if indice[0] >= len(piezas_orden):
             break
-
         cv2.waitKey(1)
 
     cv2.destroyAllWindows()
 
+    # Guardar configuración
     if os.path.exists(CONFIG_PATH):
-
         with open(CONFIG_PATH) as f:
             config = json.load(f)
-
     else:
         config = {}
 
-    config["colores"] = colores
+    if "colores" not in config:
+        config["colores"] = {}
+    
+    config["colores"]["spawn"] = colores
     config["tolerancia_color"] = COLOR_TOLERANCE
 
     with open(CONFIG_PATH,"w") as f:
-        json.dump(config,f)
+        json.dump(config,f, indent=4)
 
-    print("Colores calibrados y guardados")
+    print("Colores de spawn calibrados y guardados")
 
+########################################
+# CALIBRACIÓN DE COLORES - NEXT/HOLD
+########################################
+
+def calibrar_colores_next_hold():
+    print("\nCalibración de colores - ZONA NEXT/HOLD")
+    print("Haz click sobre cada pieza cuando se te indique (puedes usar la zona de next o hold)")
+    
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+    
+    # Usar la zona de siguientes para capturar (asumiendo que ahí se ven mejor)
+    screen = capture_screen(config["siguientes"])
+    
+    piezas_orden = ["I","J","L","O","S","T","Z"]
+    colores = {}
+    indice = [0]
+
+    def click(event,x,y,flags,param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            pieza_actual = piezas_orden[indice[0]]
+            color = screen[y,x]
+            print(f"Color capturado para {pieza_actual} (next/hold): {color}")
+            colores[pieza_actual] = color.tolist()
+            indice[0] += 1
+
+            if indice[0] < len(piezas_orden):
+                print(f"Haz click sobre la pieza {piezas_orden[indice[0]]} en zona next/hold")
+            else:
+                print("Todas las piezas de next/hold capturadas")
+
+    cv2.namedWindow("calibrar_colores_next_hold")
+    cv2.setMouseCallback("calibrar_colores_next_hold",click)
+
+    print(f"Haz click sobre la pieza {piezas_orden[0]} en zona next/hold")
+
+    while True:
+        cv2.imshow("calibrar_colores_next_hold",screen)
+        if indice[0] >= len(piezas_orden):
+            break
+        cv2.waitKey(1)
+
+    cv2.destroyAllWindows()
+
+    # Guardar configuración
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH) as f:
+            config = json.load(f)
+    else:
+        config = {}
+
+    if "colores" not in config:
+        config["colores"] = {}
+    
+    config["colores"]["next_hold"] = colores
+    config["tolerancia_color"] = COLOR_TOLERANCE
+
+    with open(CONFIG_PATH,"w") as f:
+        json.dump(config,f, indent=4)
+
+    print("Colores de next/hold calibrados y guardados")
 
 ########################################
 # CALCULAR TAMAÑO DE CELDA
 ########################################
 
 def obtener_tamano_celda(region_tablero):
-
     width = region_tablero[2]
     height = region_tablero[3]
-
     cell_w = width / BOARD_COLS
     cell_h = height / BOARD_ROWS
-
     return cell_w, cell_h
+
+########################################
+# OBTENER ZONA SPAWN (3 FILAS ARRIBA)
+########################################
+
+def obtener_region_spawn(region_tablero):
+    cell_w, cell_h = obtener_tamano_celda(region_tablero)
+    spawn_height = int(cell_h * SPAWN_ROWS)
+    spawn_region = (
+        region_tablero[0],
+        int(region_tablero[1] - spawn_height),
+        region_tablero[2],
+        spawn_height
+    )
+    return spawn_region
 
 ########################################
 # MATRIZ TABLERO
 ########################################
 
 def obtener_matriz_tablero(tablero_img, region_tablero):
-
     matriz = np.zeros((BOARD_ROWS, BOARD_COLS), dtype=int)
-
     gray = cv2.cvtColor(tablero_img, cv2.COLOR_BGR2GRAY)
-
     cell_w, cell_h = obtener_tamano_celda(region_tablero)
 
     for fila in range(BOARD_ROWS):
         for col in range(BOARD_COLS):
-
             x1 = int(col * cell_w)
             y1 = int(fila * cell_h)
-
             x2 = int(x1 + cell_w)
             y2 = int(y1 + cell_h)
 
@@ -235,7 +311,6 @@ def obtener_matriz_tablero(tablero_img, region_tablero):
                 continue
 
             celda = gray[y1:y2, x1:x2]
-
             promedio = np.mean(celda)
 
             if promedio > 40:
@@ -250,16 +325,12 @@ def obtener_matriz_tablero(tablero_img, region_tablero):
 ########################################
 
 def dibujar_malla(screen, region):
-
     cell_w, cell_h = obtener_tamano_celda(region)
-
     x_offset = region[0]
     y_offset = region[1]
 
     for c in range(BOARD_COLS + 1):
-
         x = int(x_offset + c * cell_w)
-
         cv2.line(
             screen,
             (x, y_offset),
@@ -268,10 +339,8 @@ def dibujar_malla(screen, region):
             1
         )
 
-    for r in range(BOARD_ROWS + 1):
-
+    for r in range(1, BOARD_ROWS):
         y = int(y_offset + r * cell_h)
-
         cv2.line(
             screen,
             (x_offset, y),
@@ -285,20 +354,15 @@ def dibujar_malla(screen, region):
 ########################################
 
 def dibujar_ocupacion(screen, region, matriz):
-
     cell_w, cell_h = obtener_tamano_celda(region)
-
     x_offset = region[0]
     y_offset = region[1]
 
     for r in range(BOARD_ROWS):
         for c in range(BOARD_COLS):
-
             if matriz[r][c] == 1:
-
                 cx = int(x_offset + c * cell_w + cell_w/2)
                 cy = int(y_offset + r * cell_h + cell_h/2)
-
                 cv2.circle(
                     screen,
                     (cx,cy),
@@ -308,23 +372,28 @@ def dibujar_ocupacion(screen, region, matriz):
                 )
 
 ########################################
-# DIBUJAR PIEZAS (AGREGADO DEL SEGUNDO CODIGO)
+# DIBUJAR PIEZAS CORREGIDA
 ########################################
 
-def dibujar_piezas(screen,region,piezas,color):
-
-    x_offset = region[0]
-    y_offset = region[1]
-
-    for (x,y,w,h,tipo) in piezas:
-
-        px = x + x_offset
-        py = y + y_offset
-
+def dibujar_piezas(screen, region, piezas, color, offset_adicional=(0,0)):
+    """
+    Dibuja piezas en la pantalla
+    region: tupla (x, y, w, h) de la zona donde se detectaron
+    piezas: lista de (x, y, w, h, tipo) relativas a la imagen de la zona
+    offset_adicional: para ajustar si la región no empieza en (0,0)
+    """
+    x_offset = region[0] + offset_adicional[0]
+    y_offset = region[1] + offset_adicional[1]
+    
+    for (x, y, w, h, tipo) in piezas:
+        # Centrar el texto en el bounding box
+        px = x_offset + x + w//2 - 10
+        py = y_offset + y + h//2 + 5
+        
         cv2.putText(
             screen,
             tipo,
-            (px,py),
+            (px, py),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             color,
@@ -333,13 +402,11 @@ def dibujar_piezas(screen,region,piezas,color):
         )
 
 ########################################
-# CARGAR COLORES
+# CARGAR COLORES POR ZONA
 ########################################
 
 def cargar_colores_calibrados():
-
-    global TETROMINO_COLORS
-    global COLOR_TOLERANCE
+    global SPAWN_COLORS, NEXT_HOLD_COLORS, COLOR_TOLERANCE
 
     if not os.path.exists(CONFIG_PATH):
         return
@@ -348,81 +415,182 @@ def cargar_colores_calibrados():
         config = json.load(f)
 
     if "colores" in config:
-
-        for pieza,color in config["colores"].items():
-            TETROMINO_COLORS[pieza] = np.array(color)
+        if "spawn" in config["colores"]:
+            for pieza, color in config["colores"]["spawn"].items():
+                SPAWN_COLORS[pieza] = np.array(color)
+            print("Colores de spawn cargados")
+        
+        if "next_hold" in config["colores"]:
+            for pieza, color in config["colores"]["next_hold"].items():
+                NEXT_HOLD_COLORS[pieza] = np.array(color)
+            print("Colores de next/hold cargados")
 
     if "tolerancia_color" in config:
         COLOR_TOLERANCE = config["tolerancia_color"]
 
 ########################################
-# CLASIFICAR PIEZA
+# CLASIFICAR PIEZA PARA SPAWN
 ########################################
 
-def clasificar_pieza(img, contorno, x, y, w, h):
-
+def clasificar_pieza_spawn(img, contorno, x, y, w, h):
     mask = np.zeros(img.shape[:2], dtype=np.uint8)
-    cv2.drawContours(mask,[contorno],-1,255,-1)
-
+    cv2.drawContours(mask, [contorno], -1, 255, -1)
+    
+    # Calcular color medio
     mean_color = cv2.mean(img, mask=mask)[:3]
     mean_color = np.array(mean_color)
-
+    
+    # Calcular ratio de aspecto
     ratio = w / h if h != 0 else 1
-
-    if ratio > 2.5 or ratio < 0.4:
-        return "I"
-
-    if 0.8 < ratio < 1.2:
-        dist_o = np.linalg.norm(mean_color - TETROMINO_COLORS["O"])
-        if dist_o < COLOR_TOLERANCE:
-            return "O"
-
+    
+    # Detección especial para pieza I (muy alargada)
+    if ratio > 2.0:
+        dist_i = np.linalg.norm(mean_color - SPAWN_COLORS["I"])
+        if dist_i < COLOR_TOLERANCE * 1.5:
+            return "I"
+    
+    # Para piezas T, L, J, Z (las problemáticas)
     mejor = None
-    mejor_dist = 1e9
-
-    for pieza, color in TETROMINO_COLORS.items():
-
+    mejor_dist = COLOR_TOLERANCE
+    
+    for pieza, color in SPAWN_COLORS.items():
         dist = np.linalg.norm(mean_color - color)
-
-        if dist < mejor_dist and dist < COLOR_TOLERANCE:
+        
+        # Dar un pequeño bonus a las piezas que coinciden por forma
+        if pieza in ["T", "L", "J", "Z"]:
+            if 0.7 < ratio < 1.8:
+                dist *= 0.9
+        
+        if dist < mejor_dist:
             mejor_dist = dist
             mejor = pieza
-
+    
     return mejor
 
 ########################################
-# DETECTAR PIEZAS
+# CLASIFICAR PIEZA PARA NEXT/HOLD
 ########################################
 
-def detectar_piezas(img):
+def clasificar_pieza_next_hold(img, contorno, x, y, w, h):
+    mask = np.zeros(img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(mask, [contorno], -1, 255, -1)
+    
+    # Calcular color medio
+    mean_color = cv2.mean(img, mask=mask)[:3]
+    mean_color = np.array(mean_color)
+    
+    # Calcular ratio de aspecto
+    ratio = w / h if h != 0 else 1
+    
+    # Detección especial para pieza I (muy alargada)
+    if ratio > 2.0:
+        dist_i = np.linalg.norm(mean_color - NEXT_HOLD_COLORS["I"])
+        if dist_i < COLOR_TOLERANCE * 1.5:
+            return "I"
+    
+    # Para piezas T, L, J, Z (las problemáticas)
+    mejor = None
+    mejor_dist = COLOR_TOLERANCE
+    
+    for pieza, color in NEXT_HOLD_COLORS.items():
+        dist = np.linalg.norm(mean_color - color)
+        
+        # Dar un pequeño bonus a las piezas que coinciden por forma
+        if pieza in ["T", "L", "J", "Z"]:
+            if 0.7 < ratio < 1.8:
+                dist *= 0.9
+        
+        if dist < mejor_dist:
+            mejor_dist = dist
+            mejor = pieza
+    
+    return mejor
 
+########################################
+# DETECTAR PIEZAS EN ZONA SPAWN
+########################################
+
+def detectar_piezas_spawn(img):
+    """
+    Versión para spawn que usa SPAWN_COLORS
+    """
+    if img.size == 0:
+        return []
+    
+    # Convertir a HSV para mejor detección de color
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    
+    # Crear máscara de saturación (los colores tienen alta saturación)
+    saturation = hsv[:, :, 1]
+    
+    # Umbral adaptativo para separar piezas del fondo negro
+    _, th_sat = cv2.threshold(saturation, 30, 255, cv2.THRESH_BINARY)
+    
+    # Operaciones morfológicas para limpiar
+    kernel = np.ones((3, 3), np.uint8)
+    th_sat = cv2.morphologyEx(th_sat, cv2.MORPH_OPEN, kernel)
+    th_sat = cv2.morphologyEx(th_sat, cv2.MORPH_CLOSE, kernel)
+    
+    # Encontrar contornos
+    contornos, _ = cv2.findContours(th_sat, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    piezas = []
+    
+    for c in contornos:
+        area = cv2.contourArea(c)
+        
+        # Filtrar por área
+        if area < 50:
+            continue
+        
+        x, y, w, h = cv2.boundingRect(c)
+        
+        # Verificar que el bounding box sea razonable
+        if w < 5 or h < 5:
+            continue
+        
+        # Clasificar la pieza usando colores de spawn
+        tipo = clasificar_pieza_spawn(img, c, x, y, w, h)
+        
+        if tipo:
+            piezas.append((x, y, w, h, tipo))
+    
+    return piezas
+
+########################################
+# DETECTAR PIEZAS EN NEXT/HOLD
+########################################
+
+def detectar_piezas_next_hold(img):
+    """
+    Versión para next/hold que usa NEXT_HOLD_COLORS
+    """
+    if img.size == 0:
+        return []
+    
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    blur = cv2.GaussianBlur(gray,(5,5),0)
-
-    _,th = cv2.threshold(blur,40,255,cv2.THRESH_BINARY)
-
-    contornos,_ = cv2.findContours(
+    blur = cv2.GaussianBlur(gray, (5,5), 0)
+    _, th = cv2.threshold(blur, 40, 255, cv2.THRESH_BINARY)
+    
+    contornos, _ = cv2.findContours(
         th,
         cv2.RETR_EXTERNAL,
         cv2.CHAIN_APPROX_SIMPLE
     )
-
+    
     piezas = []
-
+    
     for c in contornos:
-
         area = cv2.contourArea(c)
-
         if area < 80:
             continue
-
-        x,y,w,h = cv2.boundingRect(c)
-
-        tipo = clasificar_pieza(img,c,x,y,w,h)
-
-        piezas.append((x,y,w,h,tipo))
-
+        
+        x, y, w, h = cv2.boundingRect(c)
+        tipo = clasificar_pieza_next_hold(img, c, x, y, w, h)
+        
+        if tipo:
+            piezas.append((x, y, w, h, tipo))
+    
     return piezas
 
 ########################################
@@ -430,43 +598,93 @@ def detectar_piezas(img):
 ########################################
 
 def visualizar_zonas():
-
     with open(CONFIG_PATH) as f:
         config = json.load(f)
 
     print("Visualización en vivo (q para salir)")
+    print("Zona spawn: ROSADO | Tablero: VERDE | Ocupación: AMARILLO")
 
     while True:
-
         screen = capture_screen()
 
         t = config["tablero"]
         s = config["siguientes"]
         h = config["hold"]
 
+        # Calcular zona spawn (ARRIBA del tablero)
+        cell_w, cell_h = obtener_tamano_celda(t)
+        spawn_height = int(cell_h * SPAWN_ROWS)
+        
+        spawn_region = (
+            t[0],
+            t[1] - spawn_height,
+            t[2],
+            spawn_height
+        )
+        
+        # Capturar imágenes
         tablero_img = capture_screen(t)
+        spawn_img = capture_screen(spawn_region)
         siguientes_img = capture_screen(s)
         hold_img = capture_screen(h)
-
+        
+        # Detectar piezas (usar funciones específicas por zona)
+        piezas_spawn = detectar_piezas_spawn(spawn_img)
+        piezas_s = detectar_piezas_next_hold(siguientes_img)
+        piezas_h = detectar_piezas_next_hold(hold_img)
+        
+        # Obtener matriz del tablero
         matriz_tablero = obtener_matriz_tablero(tablero_img, t)
-
-        piezas_t = detectar_piezas(tablero_img)
-        piezas_s = detectar_piezas(siguientes_img)
-        piezas_h = detectar_piezas(hold_img)
-
-        cv2.rectangle(screen,(t[0],t[1]),(t[0]+t[2],t[1]+t[3]),(0,255,0),2)
-
+        
+        # DIBUJADO
+        # 1. Zona spawn (rosado)
+        cv2.rectangle(
+            screen,
+            (spawn_region[0], spawn_region[1]),
+            (spawn_region[0] + spawn_region[2], spawn_region[1] + spawn_region[3]),
+            (255, 105, 180),
+            2
+        )
+        
+        # 2. Tablero (verde)
+        cv2.rectangle(
+            screen,
+            (t[0], t[1]),
+            (t[0] + t[2], t[1] + t[3]),
+            (0, 255, 0),
+            2
+        )
+        
+        # 3. Siguientes (azul)
+        cv2.rectangle(
+            screen,
+            (s[0], s[1]),
+            (s[0] + s[2], s[1] + s[3]),
+            (255, 0, 0),
+            2
+        )
+        
+        # 4. Hold (naranja)
+        cv2.rectangle(
+            screen,
+            (h[0], h[1]),
+            (h[0] + h[2], h[1] + h[3]),
+            (0, 165, 255),
+            2
+        )
+        
+        # 5. Dibujar malla en el tablero
         dibujar_malla(screen, t)
+        
+        # 6. Dibujar ocupación en el tablero (puntos amarillos)
         dibujar_ocupacion(screen, t, matriz_tablero)
-        dibujar_piezas(screen,t,piezas_t,(0,255,0))
+        
+        # 7. Dibujar piezas en todas las zonas
+        dibujar_piezas(screen, spawn_region, piezas_spawn, (255, 105, 180))
+        dibujar_piezas(screen, s, piezas_s, (255, 0, 0))
+        dibujar_piezas(screen, h, piezas_h, (0, 165, 255))
 
-        cv2.rectangle(screen,(s[0],s[1]),(s[0]+s[2],s[1]+s[3]),(255,0,0),2)
-        dibujar_piezas(screen,s,piezas_s,(255,0,0))
-
-        cv2.rectangle(screen,(h[0],h[1]),(h[0]+h[2],h[1]+h[3]),(0,165,255),2)
-        dibujar_piezas(screen,h,piezas_h,(0,165,255))
-
-        cv2.imshow("deteccion tetrio",screen)
+        cv2.imshow("deteccion tetrio", screen)
 
         if cv2.waitKey(1) == ord('q'):
             break
@@ -474,71 +692,582 @@ def visualizar_zonas():
     cv2.destroyAllWindows()
 
 ########################################
+# VISUALIZACIÓN CON DEPURACIÓN DE SPAWN
+########################################
+
+def visualizar_zonas_debug_spawn():
+    with open(CONFIG_PATH) as f:
+        config = json.load(f)
+
+    print("MODO DEBUG SPAWN - Análisis detallado de la zona spawn")
+    print("q para salir")
+
+    while True:
+        screen = capture_screen()
+        t = config["tablero"]
+        s = config["siguientes"]
+        h = config["hold"]
+        
+        # Calcular zona spawn
+        cell_w, cell_h = obtener_tamano_celda(t)
+        spawn_height = int(cell_h * SPAWN_ROWS)
+        
+        spawn_region = (
+            t[0],
+            t[1] - spawn_height,
+            t[2],
+            spawn_height
+        )
+        
+        # Capturar imágenes
+        spawn_img = capture_screen(spawn_region)
+        siguientes_img = capture_screen(s)
+        hold_img = capture_screen(h)
+        
+        # Mostrar análisis de spawn en ventanas separadas
+        cv2.imshow("spawn_original", spawn_img)
+        
+        # Mostrar canal de saturación
+        hsv = cv2.cvtColor(spawn_img, cv2.COLOR_BGR2HSV)
+        cv2.imshow("spawn_saturation", hsv[:,:,1])
+        
+        # Umbral de saturación
+        _, th_sat = cv2.threshold(hsv[:,:,1], 30, 255, cv2.THRESH_BINARY)
+        cv2.imshow("spawn_threshold", th_sat)
+        
+        # Detectar piezas
+        piezas_spawn = detectar_piezas_spawn(spawn_img)
+        piezas_s = detectar_piezas_next_hold(siguientes_img)
+        piezas_h = detectar_piezas_next_hold(hold_img)
+        
+        # Crear imagen de debug para spawn
+        debug_img = spawn_img.copy()
+        
+        for (x, y, w, h, tipo) in piezas_spawn:
+            # Dibujar bounding box
+            cv2.rectangle(debug_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(debug_img, tipo, (x, y-5), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            
+            # Mostrar información en consola
+            mask = np.zeros(spawn_img.shape[:2], dtype=np.uint8)
+            cv2.rectangle(mask, (x, y), (x+w, y+h), 255, -1)
+            mean_color = cv2.mean(spawn_img, mask=mask)[:3]
+            print(f"Pieza {tipo} - Pos: ({x},{y}) - Color: {mean_color}")
+        
+        cv2.imshow("spawn_detection", debug_img)
+        
+        # Dibujar en pantalla principal
+        cv2.rectangle(screen, (t[0], t[1]), (t[0]+t[2], t[1]+t[3]), (0,255,0), 2)
+        cv2.rectangle(screen, 
+                     (spawn_region[0], spawn_region[1]),
+                     (spawn_region[0]+spawn_region[2], spawn_region[1]+spawn_region[3]),
+                     (255,105,180), 2)
+        cv2.rectangle(screen, (s[0], s[1]), (s[0]+s[2], s[1]+s[3]), (255,0,0), 2)
+        cv2.rectangle(screen, (h[0], h[1]), (h[0]+h[2], h[1]+h[3]), (0,165,255), 2)
+        
+        # Dibujar piezas
+        for (x, y, w, h, tipo) in piezas_spawn:
+            px = spawn_region[0] + x + w//2 - 10
+            py = spawn_region[1] + y + h//2 + 5
+            cv2.putText(screen, tipo, (px, py), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,105,180), 2)
+        
+        for (x, y, w, h, tipo) in piezas_s:
+            px = s[0] + x + w//2 - 10
+            py = s[1] + y + h//2 + 5
+            cv2.putText(screen, tipo, (px, py), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,0,0), 2)
+        
+        for (x, y, w, h, tipo) in piezas_h:
+            px = h[0] + x + w//2 - 10
+            py = h[1] + y + h//2 + 5
+            cv2.putText(screen, tipo, (px, py), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,165,255), 2)
+        
+        cv2.imshow("deteccion_tetrio", screen)
+        
+        if cv2.waitKey(1) == ord('q'):
+            break
+    
+    cv2.destroyAllWindows()
+
+########################################
 # BOT
 ########################################
 
 def ejecutar_bot():
-
+    from pynput.keyboard import Key, Controller
+    keyboard = Controller()
+    
     with open(CONFIG_PATH) as f:
         config = json.load(f)
 
     print("Bot iniciado")
+    print("Presiona Ctrl+C para detener")
+    
+    # Variables de estado
+    pieza_actual = None
+    pieza_en_hold = None
+    pieza_guardada_hold = None  # Para tracking interno
+    ultimo_hold_usado = False  # Para controlar que no se use hold consecutivamente
+    contador_fallos = 0
+    
+    try:
+        while True:
+            # Capturar todas las zonas
+            t = config["tablero"]
+            s = config["siguientes"]
+            h = config["hold"]
+            
+            # Calcular zona spawn
+            cell_w, cell_h = obtener_tamano_celda(t)
+            spawn_height = int(cell_h * SPAWN_ROWS)
+            
+            spawn_region = (
+                t[0],
+                t[1] - spawn_height,
+                t[2],
+                spawn_height
+            )
+            
+            # Capturar imágenes
+            tablero_img = capture_screen(t)
+            spawn_img = capture_screen(spawn_region)
+            siguientes_img = capture_screen(s)
+            hold_img = capture_screen(h)
+            
+            # Obtener matriz del tablero
+            matriz_tablero = obtener_matriz_tablero(tablero_img, t)
+            
+            # Detectar piezas
+            piezas_spawn = detectar_piezas_spawn(spawn_img)
+            piezas_siguientes = detectar_piezas_next_hold(siguientes_img)
+            piezas_hold = detectar_piezas_next_hold(hold_img)
+            
+            # Actualizar estado del hold (lo que realmente vemos en pantalla)
+            if piezas_hold:
+                pieza_en_hold = piezas_hold[0][4]
+            else:
+                pieza_en_hold = None
+            
+            # Ordenar piezas siguientes por posición Y (de arriba a abajo = más próximas)
+            if piezas_siguientes:
+                # Ordenar por coordenada Y (menor Y = más arriba = más próxima)
+                piezas_siguientes.sort(key=lambda p: p[1])
+            
+            # Mostrar información de debug
+            if piezas_spawn:
+                print(f"\nPieza en spawn: {piezas_spawn[0][4]}")
+            if piezas_siguientes:
+                print(f"Siguientes (en orden): {[p[4] for p in piezas_siguientes[:4]]}")
+            if pieza_en_hold:
+                print(f"Hold: {pieza_en_hold}")
+            
+            # Si hay pieza en spawn y no hay pieza actual, es nueva pieza
+            if piezas_spawn and pieza_actual is None:
+                pieza_actual = piezas_spawn[0][4]  # El tipo de pieza
+                print(f"\n>>> NUEVA PIEZA DETECTADA: {pieza_actual}")
+                
+                # Obtener próximas piezas en orden (la primera es la más próxima)
+                proximas_piezas = [p[4] for p in piezas_siguientes[:4]] if piezas_siguientes else []
+                
+                # Verificar si podemos colocar la pieza actual
+                mejor_col, mejor_rotacion = encontrar_mejor_posicion(pieza_actual, matriz_tablero)
+                puede_colocar = mejor_col is not None
+                
+                # DECISIÓN: ¿Usar hold o colocar ahora?
+                usar_hold = False
+                
+                # Solo considerar hold si no se usó en la pieza anterior
+                if not ultimo_hold_usado:
+                    # Caso 1: Hold está vacío Y la pieza actual es problemática Y hay próximas buenas
+                    if pieza_en_hold is None:
+                        # Piezas problemáticas (difíciles de colocar)
+                        piezas_problematicas = ['O', 'S', 'Z']
+                        
+                        # Si la pieza actual es problemática y hay próximas buenas, guardarla
+                        if pieza_actual in piezas_problematicas and proximas_piezas:
+                            # Verificar si alguna próxima pieza es buena
+                            piezas_buenas = ['I', 'J', 'L', 'T']  # Piezas fáciles de colocar
+                            if any(p in piezas_buenas for p in proximas_piezas[:2]):
+                                usar_hold = True
+                                print(f"Hold vacío: Guardando pieza problemática {pieza_actual} para próximas buenas")
+                    
+                    # Caso 2: Hay pieza en hold Y es mejor que la actual
+                    elif pieza_en_hold is not None:
+                        # Evaluar si la pieza en hold es mejor que la actual
+                        puntaje_actual = evaluar_pieza(pieza_actual, matriz_tablero) if puede_colocar else -999
+                        puntaje_hold = evaluar_pieza(pieza_en_hold, matriz_tablero)
+                        
+                        # Solo hacer swap si:
+                        # 1. La pieza en hold es significativamente mejor, o
+                        # 2. La pieza actual no se puede colocar
+                        if not puede_colocar:
+                            usar_hold = True
+                            print(f"No se puede colocar {pieza_actual}, swappeando con {pieza_en_hold}")
+                        elif puntaje_hold > puntaje_actual + 1.0:  # Margen para swaps útiles
+                            usar_hold = True
+                            print(f"Swap beneficioso: {pieza_en_hold} (puntaje:{puntaje_hold:.1f}) mejor que {pieza_actual} (puntaje:{puntaje_actual:.1f})")
+                
+                # Ejecutar hold si es necesario
+                if usar_hold:
+                    print(f"Presionando SHIFT para {'guardar' if pieza_en_hold is None else 'swap'}...")
+                    keyboard.press(Key.shift)
+                    time.sleep(0.05)
+                    keyboard.release(Key.shift)
+                    
+                    # IMPORTANTE: Después de shift, el hold SIEMPRE tiene una pieza
+                    # Si estaba vacío: la actual va al hold
+                    # Si tenía pieza: se intercambian
+                    
+                    ultimo_hold_usado = True
+                    
+                    # Esperar a que la acción de hold se complete
+                    time.sleep(0.3)
+                    
+                    if pieza_en_hold is None:
+                        # Caso: Hold vacío -> guardamos la actual
+                        pieza_guardada_hold = pieza_actual
+                        print(f"Pieza {pieza_actual} guardada en hold")
+                        pieza_actual = None  # Esperar nueva pieza
+                    else:
+                        # Caso: Swap - la pieza del hold ahora es la actual
+                        print(f"Swap realizado: {pieza_en_hold} sale de hold, {pieza_actual} va a hold")
+                        pieza_actual = pieza_en_hold
+                        pieza_guardada_hold = pieza_actual
+                        
+                        # Esperar a que aparezca la pieza swappeada
+                        time.sleep(0.3)
+                        
+                        # Ahora colocar la pieza que vino del hold
+                        print(f"Colocando pieza {pieza_actual} que vino del hold")
+                        exito = colocar_pieza(pieza_actual, matriz_tablero, keyboard)
+                        
+                        if exito:
+                            print(f"Pieza {pieza_actual} colocada exitosamente")
+                        else:
+                            print(f"Error colocando {pieza_actual}")
+                            contador_fallos += 1
+                        
+                        pieza_actual = None
+                    
+                    continue  # Volver al inicio del loop
+                
+                # Si no usamos hold, colocar la pieza actual
+                if puede_colocar:
+                    print(f"Colocando pieza {pieza_actual} directamente")
+                    exito = colocar_pieza(pieza_actual, matriz_tablero, keyboard)
+                    
+                    if exito:
+                        print(f"Pieza {pieza_actual} colocada exitosamente")
+                        ultimo_hold_usado = False  # Resetear bandera de hold
+                    else:
+                        print(f"Error colocando {pieza_actual}")
+                        contador_fallos += 1
+                else:
+                    # No se puede colocar y no podemos usar hold (ya se usó o no conviene)
+                    print(f"ADVERTENCIA: No se puede colocar {pieza_actual} y no se puede usar hold")
+                    # Forzar colocación en la mejor posición disponible
+                    exito = colocar_pieza(pieza_actual, matriz_tablero, keyboard)
+                    if exito:
+                        ultimo_hold_usado = False
+                
+                pieza_actual = None
+            
+            # Pequeña pausa para no saturar
+            time.sleep(0.05)
+            
+    except KeyboardInterrupt:
+        print("\nBot detenido")
+    except Exception as e:
+        print(f"Error en el bot: {e}")
+        import traceback
+        traceback.print_exc()
 
-    while True:
+def colocar_pieza(pieza, matriz_tablero, keyboard):
+    """Función auxiliar para colocar una pieza"""
+    print(f"Colocando pieza {pieza}")
+    
+    # Encontrar mejor posición
+    mejor_col, mejor_rotacion = encontrar_mejor_posicion(pieza, matriz_tablero)
+    
+    if mejor_col is not None:
+        # Calcular desplazamiento necesario (asumimos spawn en columna 4-5)
+        col_actual = 4
+        desplazamiento = mejor_col - col_actual
+        
+        print(f"Moviendo a columna {mejor_col}, desplazamiento: {desplazamiento}")
+        
+        # Aplicar rotaciones necesarias
+        if mejor_rotacion > 0:
+            print(f"Aplicando {mejor_rotacion} rotación(es)")
+            for _ in range(mejor_rotacion):
+                keyboard.press(Key.up)
+                time.sleep(0.05)
+                keyboard.release(Key.up)
+                time.sleep(0.05)
+        
+        # Mover horizontalmente
+        if desplazamiento > 0:
+            print(f"Moviendo derecha {desplazamiento} veces")
+            for _ in range(desplazamiento):
+                keyboard.press(Key.right)
+                time.sleep(0.05)
+                keyboard.release(Key.right)
+                time.sleep(0.05)
+        elif desplazamiento < 0:
+            print(f"Moviendo izquierda {abs(desplazamiento)} veces")
+            for _ in range(abs(desplazamiento)):
+                keyboard.press(Key.left)
+                time.sleep(0.05)
+                keyboard.release(Key.left)
+                time.sleep(0.05)
+        
+        # Bajar la pieza inmediatamente
+        print("Soltando pieza...")
+        time.sleep(0.1)
+        keyboard.press(Key.space)
+        time.sleep(0.05)
+        keyboard.release(Key.space)
+        
+        print("Pieza colocada, esperando siguiente\n")
+        return True
+    else:
+        print(f"No hay espacio para la pieza {pieza}")
+        return False
 
-        siguientes = capture_screen(config["siguientes"])
+def evaluar_pieza(pieza, matriz_tablero):
+    """
+    Evalúa qué tan buena es una pieza para la situación actual
+    Retorna un puntaje (mayor = mejor)
+    """
+    # Definir pesos para diferentes características
+    PESO_ALTURA = 0.3
+    PESO_CENTRO = 0.5
+    PESO_HUECOS = 0.2
+    
+    # Definir formas básicas (sin rotaciones para evaluación rápida)
+    formas = {
+        'I': [[1,1,1,1]],
+        'O': [[1,1],[1,1]],
+        'T': [[0,1,0],[1,1,1]],
+        'S': [[0,1,1],[1,1,0]],
+        'Z': [[1,1,0],[0,1,1]],
+        'J': [[1,0,0],[1,1,1]],
+        'L': [[0,0,1],[1,1,1]]
+    }
+    
+    if pieza not in formas:
+        return 0
+    
+    forma_base = formas[pieza]
+    altura_pieza = len(forma_base)
+    ancho_pieza = len(forma_base[0])
+    centro = 4.5
+    
+    mejor_puntaje = float('-inf')
+    
+    # Probar cada columna posible
+    for col in range(BOARD_COLS - ancho_pieza + 1):
+        # Encontrar altura de caída
+        fila_caida = None
+        for fila in range(BOARD_ROWS - altura_pieza + 1):
+            colision = False
+            for i in range(altura_pieza):
+                for j in range(ancho_pieza):
+                    if forma_base[i][j] == 1:
+                        if matriz_tablero[fila + i][col + j] == 1:
+                            colision = True
+                            break
+                if colision:
+                    break
+            if colision:
+                fila_caida = fila - 1 if fila > 0 else None
+                break
+        
+        if fila_caida is None:
+            fila_caida = BOARD_ROWS - altura_pieza
+        
+        if fila_caida is not None and fila_caida >= 0:
+            # Calcular puntaje
+            distancia_centro = abs((col + ancho_pieza/2) - centro)
+            puntaje_centro = -distancia_centro * PESO_CENTRO
+            
+            # Altura (preferir posiciones bajas)
+            puntaje_altura = (BOARD_ROWS - fila_caida) * PESO_ALTURA
+            
+            # Huecos que podría crear (simplificado)
+            huecos = 0
+            for i in range(altura_pieza):
+                for j in range(ancho_pieza):
+                    if forma_base[i][j] == 1:
+                        if fila_caida + i + 1 < BOARD_ROWS:
+                            if matriz_tablero[fila_caida + i + 1][col + j] == 0:
+                                huecos += 1
+            puntaje_huecos = -huecos * PESO_HUECOS
+            
+            puntaje_total = puntaje_centro + puntaje_altura + puntaje_huecos
+            
+            if puntaje_total > mejor_puntaje:
+                mejor_puntaje = puntaje_total
+    
+    return mejor_puntaje if mejor_puntaje > float('-inf') else -999
 
-        piezas = detectar_piezas(siguientes)
 
-        if len(piezas) > 0:
+def encontrar_fila_caida(forma, col, matriz_tablero):
+    """
+    Encuentra la fila más baja donde puede caer la pieza
+    """
+    altura_pieza = len(forma)
+    ancho_pieza = len(forma[0])
+    
+    # Empezar desde arriba y bajar hasta encontrar colisión
+    for fila in range(BOARD_ROWS - altura_pieza + 1):
+        # Verificar si hay colisión en esta posición
+        colision = False
+        
+        for i in range(altura_pieza):
+            for j in range(ancho_pieza):
+                if forma[i][j] == 1:
+                    # Verificar si la celda está ocupada
+                    if matriz_tablero[fila + i][col + j] == 1:
+                        colision = True
+                        break
+            if colision:
+                break
+        
+        if colision:
+            # La posición anterior era la válida
+            return fila - 1 if fila > 0 else None
+    
+    # Si no hubo colisión, la pieza puede caer hasta el fondo
+    return BOARD_ROWS - altura_pieza
 
-            keyboard.press('left')
-            keyboard.release('left')
-            time.sleep(0.1)
 
-            keyboard.press('x')
-            keyboard.release('x')
-            time.sleep(0.1)
-
-            keyboard.press('space')
-            keyboard.release('space')
+def encontrar_mejor_posicion(pieza, matriz_tablero):
+    """
+    Encuentra la mejor posición y rotación para una pieza
+    Retorna (columna, rotaciones) o (None, None) si no hay espacio
+    """
+    # Definir formas de las piezas con todas las rotaciones
+    formas_con_rotaciones = {
+        'I': [
+            [[1,1,1,1]],  # 0°
+            [[1],[1],[1],[1]]  # 90°
+        ],
+        'O': [
+            [[1,1],[1,1]]  # O es igual en todas las rotaciones
+        ],
+        'T': [
+            [[0,1,0],[1,1,1]],  # 0°
+            [[1,0],[1,1],[1,0]],  # 90°
+            [[1,1,1],[0,1,0]],  # 180°
+            [[0,1],[1,1],[0,1]]  # 270°
+        ],
+        'S': [
+            [[0,1,1],[1,1,0]],  # 0°
+            [[1,0],[1,1],[0,1]]  # 90°
+        ],
+        'Z': [
+            [[1,1,0],[0,1,1]],  # 0°
+            [[0,1],[1,1],[1,0]]  # 90°
+        ],
+        'J': [
+            [[1,0,0],[1,1,1]],  # 0°
+            [[1,1],[1,0],[1,0]],  # 90°
+            [[1,1,1],[0,0,1]],  # 180°
+            [[0,1],[0,1],[1,1]]  # 270°
+        ],
+        'L': [
+            [[0,0,1],[1,1,1]],  # 0°
+            [[1,0],[1,0],[1,1]],  # 90°
+            [[1,1,1],[1,0,0]],  # 180°
+            [[1,1],[0,1],[0,1]]  # 270°
+        ]
+    }
+    
+    if pieza not in formas_con_rotaciones:
+        return 4, 0  # Default al centro sin rotación
+    
+    rotaciones = formas_con_rotaciones[pieza]
+    mejor_posicion = None
+    mejor_puntaje = float('-inf')
+    centro = 4.5
+    
+    # Probar cada rotación
+    for rot_idx, forma in enumerate(rotaciones):
+        altura_pieza = len(forma)
+        ancho_pieza = len(forma[0])
+        
+        # Probar cada columna posible
+        for col in range(BOARD_COLS - ancho_pieza + 1):
+            # Encontrar la fila más baja donde puede caer la pieza
+            fila_caida = encontrar_fila_caida(forma, col, matriz_tablero)
+            
+            if fila_caida is not None and fila_caida >= 0:
+                # Calcular puntaje para esta posición
+                # Preferir posiciones cerca del centro
+                distancia_centro = abs((col + ancho_pieza/2) - centro)
+                puntaje = -distancia_centro * 2  # Peso doble para el centro
+                
+                # Bonus por altura (preferir posiciones más bajas)
+                puntaje += (BOARD_ROWS - fila_caida) * 0.2
+                
+                # Penalizar si crea huecos
+                huecos = 0
+                for i in range(altura_pieza):
+                    for j in range(ancho_pieza):
+                        if forma[i][j] == 1:
+                            if fila_caida + i + 1 < BOARD_ROWS:
+                                if matriz_tablero[fila_caida + i + 1][col + j] == 0:
+                                    huecos += 1
+                puntaje -= huecos * 0.3
+                
+                if puntaje > mejor_puntaje:
+                    mejor_puntaje = puntaje
+                    mejor_posicion = (col, rot_idx)
+    
+    if mejor_posicion is None:
+        return None, None
+    
+    return mejor_posicion
 
 ########################################
 # MENÚ
 ########################################
 
 def menu():
-
     while True:
-
         print("\nBOT TETRIO")
         print("1 - Calibrar zonas")
         print("2 - Ejecutar bot")
         print("3 - Ver detección")
-        print("4 - Calibrar colores")
-        print("5 - Salir")
+        print("4 - Calibrar colores SPAWN")
+        print("5 - Calibrar colores NEXT/HOLD")
+        print("6 - Modo debug spawn")
+        print("7 - Salir")
 
         op = input("> ")
 
         if op == "1":
             modo_calibracion()
-
         elif op == "2":
             ejecutar_bot()
-
         elif op == "3":
             visualizar_zonas()
-
         elif op == "4":
-            calibrar_colores()
-
+            calibrar_colores_spawn()
         elif op == "5":
+            calibrar_colores_next_hold()
+        elif op == "6":
+            visualizar_zonas_debug_spawn()
+        elif op == "7":
             break
 
 ########################################
 
 if __name__ == "__main__":
-
     cargar_colores_calibrados()
     menu()
 

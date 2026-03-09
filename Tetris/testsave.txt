@@ -1,11 +1,9 @@
-#Zona rosada, malla y deteccion de letras agregada
-
 import os
 import cv2
 import numpy as np
 import mss
 import json
-from pynput.keyboard import Controller
+from pynput.keyboard import Controller, Key
 import time
 
 keyboard = Controller()
@@ -799,26 +797,441 @@ def visualizar_zonas_debug_spawn():
 ########################################
 
 def ejecutar_bot():
+    from pynput.keyboard import Key, Controller
+    keyboard = Controller()
+    
     with open(CONFIG_PATH) as f:
         config = json.load(f)
 
     print("Bot iniciado")
+    print("Presiona Ctrl+C para detener")
+    
+    # Variables de estado
+    pieza_actual = None
+    pieza_en_hold = None
+    pieza_guardada_hold = None  # Para tracking interno
+    ultimo_hold_usado = False  # Para controlar que no se use hold consecutivamente
+    contador_fallos = 0
+    
+    try:
+        while True:
+            # Capturar todas las zonas
+            t = config["tablero"]
+            s = config["siguientes"]
+            h = config["hold"]
+            
+            # Calcular zona spawn
+            cell_w, cell_h = obtener_tamano_celda(t)
+            spawn_height = int(cell_h * SPAWN_ROWS)
+            
+            spawn_region = (
+                t[0],
+                t[1] - spawn_height,
+                t[2],
+                spawn_height
+            )
+            
+            # Capturar imágenes
+            tablero_img = capture_screen(t)
+            spawn_img = capture_screen(spawn_region)
+            siguientes_img = capture_screen(s)
+            hold_img = capture_screen(h)
+            
+            # Obtener matriz del tablero
+            matriz_tablero = obtener_matriz_tablero(tablero_img, t)
+            
+            # Detectar piezas
+            piezas_spawn = detectar_piezas_spawn(spawn_img)
+            piezas_siguientes = detectar_piezas_next_hold(siguientes_img)
+            piezas_hold = detectar_piezas_next_hold(hold_img)
+            
+            # Actualizar estado del hold (lo que realmente vemos en pantalla)
+            if piezas_hold:
+                pieza_en_hold = piezas_hold[0][4]
+            else:
+                pieza_en_hold = None
+            
+            # Ordenar piezas siguientes por posición Y (de arriba a abajo = más próximas)
+            if piezas_siguientes:
+                # Ordenar por coordenada Y (menor Y = más arriba = más próxima)
+                piezas_siguientes.sort(key=lambda p: p[1])
+            
+            # Mostrar información de debug
+            if piezas_spawn:
+                print(f"\nPieza en spawn: {piezas_spawn[0][4]}")
+            if piezas_siguientes:
+                print(f"Siguientes (en orden): {[p[4] for p in piezas_siguientes[:4]]}")
+            if pieza_en_hold:
+                print(f"Hold: {pieza_en_hold}")
+            
+            # Si hay pieza en spawn y no hay pieza actual, es nueva pieza
+            if piezas_spawn and pieza_actual is None:
+                pieza_actual = piezas_spawn[0][4]  # El tipo de pieza
+                print(f"\n>>> NUEVA PIEZA DETECTADA: {pieza_actual}")
+                
+                # Obtener próximas piezas en orden (la primera es la más próxima)
+                proximas_piezas = [p[4] for p in piezas_siguientes[:4]] if piezas_siguientes else []
+                
+                # Verificar si podemos colocar la pieza actual
+                mejor_col, mejor_rotacion = encontrar_mejor_posicion(pieza_actual, matriz_tablero)
+                puede_colocar = mejor_col is not None
+                
+                # DECISIÓN: ¿Usar hold o colocar ahora?
+                usar_hold = False
+                
+                # Solo considerar hold si no se usó en la pieza anterior
+                if not ultimo_hold_usado:
+                    # Caso 1: Hold está vacío Y la pieza actual es problemática Y hay próximas buenas
+                    if pieza_en_hold is None:
+                        # Piezas problemáticas (difíciles de colocar)
+                        piezas_problematicas = ['O', 'S', 'Z']
+                        
+                        # Si la pieza actual es problemática y hay próximas buenas, guardarla
+                        if pieza_actual in piezas_problematicas and proximas_piezas:
+                            # Verificar si alguna próxima pieza es buena
+                            piezas_buenas = ['I', 'J', 'L', 'T']  # Piezas fáciles de colocar
+                            if any(p in piezas_buenas for p in proximas_piezas[:2]):
+                                usar_hold = True
+                                print(f"Hold vacío: Guardando pieza problemática {pieza_actual} para próximas buenas")
+                    
+                    # Caso 2: Hay pieza en hold Y es mejor que la actual
+                    elif pieza_en_hold is not None:
+                        # Evaluar si la pieza en hold es mejor que la actual
+                        puntaje_actual = evaluar_pieza(pieza_actual, matriz_tablero) if puede_colocar else -999
+                        puntaje_hold = evaluar_pieza(pieza_en_hold, matriz_tablero)
+                        
+                        # Solo hacer swap si:
+                        # 1. La pieza en hold es significativamente mejor, o
+                        # 2. La pieza actual no se puede colocar
+                        if not puede_colocar:
+                            usar_hold = True
+                            print(f"No se puede colocar {pieza_actual}, swappeando con {pieza_en_hold}")
+                        elif puntaje_hold > puntaje_actual + 1.0:  # Margen para swaps útiles
+                            usar_hold = True
+                            print(f"Swap beneficioso: {pieza_en_hold} (puntaje:{puntaje_hold:.1f}) mejor que {pieza_actual} (puntaje:{puntaje_actual:.1f})")
+                
+                # Ejecutar hold si es necesario
+                if usar_hold:
+                    print(f"Presionando SHIFT para {'guardar' if pieza_en_hold is None else 'swap'}...")
+                    keyboard.press(Key.shift)
+                    time.sleep(0.05)
+                    keyboard.release(Key.shift)
+                    
+                    # IMPORTANTE: Después de shift, el hold SIEMPRE tiene una pieza
+                    # Si estaba vacío: la actual va al hold
+                    # Si tenía pieza: se intercambian
+                    
+                    ultimo_hold_usado = True
+                    
+                    # Esperar a que la acción de hold se complete
+                    time.sleep(0.3)
+                    
+                    if pieza_en_hold is None:
+                        # Caso: Hold vacío -> guardamos la actual
+                        pieza_guardada_hold = pieza_actual
+                        print(f"Pieza {pieza_actual} guardada en hold")
+                        pieza_actual = None  # Esperar nueva pieza
+                    else:
+                        # Caso: Swap - la pieza del hold ahora es la actual
+                        print(f"Swap realizado: {pieza_en_hold} sale de hold, {pieza_actual} va a hold")
+                        pieza_actual = pieza_en_hold
+                        pieza_guardada_hold = pieza_actual
+                        
+                        # Esperar a que aparezca la pieza swappeada
+                        time.sleep(0.3)
+                        
+                        # Ahora colocar la pieza que vino del hold
+                        print(f"Colocando pieza {pieza_actual} que vino del hold")
+                        exito = colocar_pieza(pieza_actual, matriz_tablero, keyboard)
+                        
+                        if exito:
+                            print(f"Pieza {pieza_actual} colocada exitosamente")
+                        else:
+                            print(f"Error colocando {pieza_actual}")
+                            contador_fallos += 1
+                        
+                        pieza_actual = None
+                    
+                    continue  # Volver al inicio del loop
+                
+                # Si no usamos hold, colocar la pieza actual
+                if puede_colocar:
+                    print(f"Colocando pieza {pieza_actual} directamente")
+                    exito = colocar_pieza(pieza_actual, matriz_tablero, keyboard)
+                    
+                    if exito:
+                        print(f"Pieza {pieza_actual} colocada exitosamente")
+                        ultimo_hold_usado = False  # Resetear bandera de hold
+                    else:
+                        print(f"Error colocando {pieza_actual}")
+                        contador_fallos += 1
+                else:
+                    # No se puede colocar y no podemos usar hold (ya se usó o no conviene)
+                    print(f"ADVERTENCIA: No se puede colocar {pieza_actual} y no se puede usar hold")
+                    # Forzar colocación en la mejor posición disponible
+                    exito = colocar_pieza(pieza_actual, matriz_tablero, keyboard)
+                    if exito:
+                        ultimo_hold_usado = False
+                
+                pieza_actual = None
+            
+            # Pequeña pausa para no saturar
+            time.sleep(0.05)
+            
+    except KeyboardInterrupt:
+        print("\nBot detenido")
+    except Exception as e:
+        print(f"Error en el bot: {e}")
+        import traceback
+        traceback.print_exc()
 
-    while True:
-        siguientes = capture_screen(config["siguientes"])
-        piezas = detectar_piezas_next_hold(siguientes)
+def colocar_pieza(pieza, matriz_tablero, keyboard):
+    """Función auxiliar para colocar una pieza"""
+    print(f"Colocando pieza {pieza}")
+    
+    # Encontrar mejor posición
+    mejor_col, mejor_rotacion = encontrar_mejor_posicion(pieza, matriz_tablero)
+    
+    if mejor_col is not None:
+        # Calcular desplazamiento necesario (asumimos spawn en columna 4-5)
+        col_actual = 4
+        desplazamiento = mejor_col - col_actual
+        
+        print(f"Moviendo a columna {mejor_col}, desplazamiento: {desplazamiento}")
+        
+        # Aplicar rotaciones necesarias
+        if mejor_rotacion > 0:
+            print(f"Aplicando {mejor_rotacion} rotación(es)")
+            for _ in range(mejor_rotacion):
+                keyboard.press(Key.up)
+                time.sleep(0.05)
+                keyboard.release(Key.up)
+                time.sleep(0.05)
+        
+        # Mover horizontalmente
+        if desplazamiento > 0:
+            print(f"Moviendo derecha {desplazamiento} veces")
+            for _ in range(desplazamiento):
+                keyboard.press(Key.right)
+                time.sleep(0.05)
+                keyboard.release(Key.right)
+                time.sleep(0.05)
+        elif desplazamiento < 0:
+            print(f"Moviendo izquierda {abs(desplazamiento)} veces")
+            for _ in range(abs(desplazamiento)):
+                keyboard.press(Key.left)
+                time.sleep(0.05)
+                keyboard.release(Key.left)
+                time.sleep(0.05)
+        
+        # Bajar la pieza inmediatamente
+        print("Soltando pieza...")
+        time.sleep(0.1)
+        keyboard.press(Key.space)
+        time.sleep(0.05)
+        keyboard.release(Key.space)
+        
+        print("Pieza colocada, esperando siguiente\n")
+        return True
+    else:
+        print(f"No hay espacio para la pieza {pieza}")
+        return False
 
-        if len(piezas) > 0:
-            keyboard.press('left')
-            keyboard.release('left')
-            time.sleep(0.1)
+def evaluar_pieza(pieza, matriz_tablero):
+    """
+    Evalúa qué tan buena es una pieza para la situación actual
+    Retorna un puntaje (mayor = mejor)
+    """
+    # Definir pesos para diferentes características
+    PESO_ALTURA = 0.3
+    PESO_CENTRO = 0.5
+    PESO_HUECOS = 0.2
+    
+    # Definir formas básicas (sin rotaciones para evaluación rápida)
+    formas = {
+        'I': [[1,1,1,1]],
+        'O': [[1,1],[1,1]],
+        'T': [[0,1,0],[1,1,1]],
+        'S': [[0,1,1],[1,1,0]],
+        'Z': [[1,1,0],[0,1,1]],
+        'J': [[1,0,0],[1,1,1]],
+        'L': [[0,0,1],[1,1,1]]
+    }
+    
+    if pieza not in formas:
+        return 0
+    
+    forma_base = formas[pieza]
+    altura_pieza = len(forma_base)
+    ancho_pieza = len(forma_base[0])
+    centro = 4.5
+    
+    mejor_puntaje = float('-inf')
+    
+    # Probar cada columna posible
+    for col in range(BOARD_COLS - ancho_pieza + 1):
+        # Encontrar altura de caída
+        fila_caida = None
+        for fila in range(BOARD_ROWS - altura_pieza + 1):
+            colision = False
+            for i in range(altura_pieza):
+                for j in range(ancho_pieza):
+                    if forma_base[i][j] == 1:
+                        if matriz_tablero[fila + i][col + j] == 1:
+                            colision = True
+                            break
+                if colision:
+                    break
+            if colision:
+                fila_caida = fila - 1 if fila > 0 else None
+                break
+        
+        if fila_caida is None:
+            fila_caida = BOARD_ROWS - altura_pieza
+        
+        if fila_caida is not None and fila_caida >= 0:
+            # Calcular puntaje
+            distancia_centro = abs((col + ancho_pieza/2) - centro)
+            puntaje_centro = -distancia_centro * PESO_CENTRO
+            
+            # Altura (preferir posiciones bajas)
+            puntaje_altura = (BOARD_ROWS - fila_caida) * PESO_ALTURA
+            
+            # Huecos que podría crear (simplificado)
+            huecos = 0
+            for i in range(altura_pieza):
+                for j in range(ancho_pieza):
+                    if forma_base[i][j] == 1:
+                        if fila_caida + i + 1 < BOARD_ROWS:
+                            if matriz_tablero[fila_caida + i + 1][col + j] == 0:
+                                huecos += 1
+            puntaje_huecos = -huecos * PESO_HUECOS
+            
+            puntaje_total = puntaje_centro + puntaje_altura + puntaje_huecos
+            
+            if puntaje_total > mejor_puntaje:
+                mejor_puntaje = puntaje_total
+    
+    return mejor_puntaje if mejor_puntaje > float('-inf') else -999
 
-            keyboard.press('x')
-            keyboard.release('x')
-            time.sleep(0.1)
 
-            keyboard.press('space')
-            keyboard.release('space')
+def encontrar_fila_caida(forma, col, matriz_tablero):
+    """
+    Encuentra la fila más baja donde puede caer la pieza
+    """
+    altura_pieza = len(forma)
+    ancho_pieza = len(forma[0])
+    
+    # Empezar desde arriba y bajar hasta encontrar colisión
+    for fila in range(BOARD_ROWS - altura_pieza + 1):
+        # Verificar si hay colisión en esta posición
+        colision = False
+        
+        for i in range(altura_pieza):
+            for j in range(ancho_pieza):
+                if forma[i][j] == 1:
+                    # Verificar si la celda está ocupada
+                    if matriz_tablero[fila + i][col + j] == 1:
+                        colision = True
+                        break
+            if colision:
+                break
+        
+        if colision:
+            # La posición anterior era la válida
+            return fila - 1 if fila > 0 else None
+    
+    # Si no hubo colisión, la pieza puede caer hasta el fondo
+    return BOARD_ROWS - altura_pieza
+
+
+def encontrar_mejor_posicion(pieza, matriz_tablero):
+    """
+    Encuentra la mejor posición y rotación para una pieza
+    Retorna (columna, rotaciones) o (None, None) si no hay espacio
+    """
+    # Definir formas de las piezas con todas las rotaciones
+    formas_con_rotaciones = {
+        'I': [
+            [[1,1,1,1]],  # 0°
+            [[1],[1],[1],[1]]  # 90°
+        ],
+        'O': [
+            [[1,1],[1,1]]  # O es igual en todas las rotaciones
+        ],
+        'T': [
+            [[0,1,0],[1,1,1]],  # 0°
+            [[1,0],[1,1],[1,0]],  # 90°
+            [[1,1,1],[0,1,0]],  # 180°
+            [[0,1],[1,1],[0,1]]  # 270°
+        ],
+        'S': [
+            [[0,1,1],[1,1,0]],  # 0°
+            [[1,0],[1,1],[0,1]]  # 90°
+        ],
+        'Z': [
+            [[1,1,0],[0,1,1]],  # 0°
+            [[0,1],[1,1],[1,0]]  # 90°
+        ],
+        'J': [
+            [[1,0,0],[1,1,1]],  # 0°
+            [[1,1],[1,0],[1,0]],  # 90°
+            [[1,1,1],[0,0,1]],  # 180°
+            [[0,1],[0,1],[1,1]]  # 270°
+        ],
+        'L': [
+            [[0,0,1],[1,1,1]],  # 0°
+            [[1,0],[1,0],[1,1]],  # 90°
+            [[1,1,1],[1,0,0]],  # 180°
+            [[1,1],[0,1],[0,1]]  # 270°
+        ]
+    }
+    
+    if pieza not in formas_con_rotaciones:
+        return 4, 0  # Default al centro sin rotación
+    
+    rotaciones = formas_con_rotaciones[pieza]
+    mejor_posicion = None
+    mejor_puntaje = float('-inf')
+    centro = 4.5
+    
+    # Probar cada rotación
+    for rot_idx, forma in enumerate(rotaciones):
+        altura_pieza = len(forma)
+        ancho_pieza = len(forma[0])
+        
+        # Probar cada columna posible
+        for col in range(BOARD_COLS - ancho_pieza + 1):
+            # Encontrar la fila más baja donde puede caer la pieza
+            fila_caida = encontrar_fila_caida(forma, col, matriz_tablero)
+            
+            if fila_caida is not None and fila_caida >= 0:
+                # Calcular puntaje para esta posición
+                # Preferir posiciones cerca del centro
+                distancia_centro = abs((col + ancho_pieza/2) - centro)
+                puntaje = -distancia_centro * 2  # Peso doble para el centro
+                
+                # Bonus por altura (preferir posiciones más bajas)
+                puntaje += (BOARD_ROWS - fila_caida) * 0.2
+                
+                # Penalizar si crea huecos
+                huecos = 0
+                for i in range(altura_pieza):
+                    for j in range(ancho_pieza):
+                        if forma[i][j] == 1:
+                            if fila_caida + i + 1 < BOARD_ROWS:
+                                if matriz_tablero[fila_caida + i + 1][col + j] == 0:
+                                    huecos += 1
+                puntaje -= huecos * 0.3
+                
+                if puntaje > mejor_puntaje:
+                    mejor_puntaje = puntaje
+                    mejor_posicion = (col, rot_idx)
+    
+    if mejor_posicion is None:
+        return None, None
+    
+    return mejor_posicion
 
 ########################################
 # MENÚ
