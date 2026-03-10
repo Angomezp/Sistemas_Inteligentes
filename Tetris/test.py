@@ -844,50 +844,49 @@ def simular_placement(matriz, pieza, rot, col):
     """
     Simula colocar una pieza en la matriz y devuelve el nuevo tablero y líneas eliminadas.
     pieza: tipo de pieza (str)
-    rot: índice de rotación (0..n)
+    rot: índice de rotación (0..n) - 0 es horizontal
     col: columna donde colocar (esquina superior izquierda de la pieza)
     """
-    # Definir formas de las piezas (igual que en encontrar_mejor_posicion)
+    # Formas con rotación 0 = horizontal
     formas = {
         'I': [
-            [[1,1,1,1]],
-            [[1],[1],[1],[1]]
+            [[1,1,1,1]],          # horizontal
+            [[1],[1],[1],[1]]      # vertical
         ],
         'O': [
-            [[1,1],[1,1]]
+            [[1,1],[1,1]]          # igual en todas
         ],
         'T': [
-            [[0,1,0],[1,1,1]],
-            [[1,0],[1,1],[1,0]],
-            [[1,1,1],[0,1,0]],
-            [[0,1],[1,1],[0,1]]
+            [[1,1,1],[0,1,0]],     # horizontal (T acostada)
+            [[1,0],[1,1],[1,0]],   # 90° horario
+            [[0,1,0],[1,1,1]],     # 180° (vertical invertida? cuidado)
+            [[0,1],[1,1],[0,1]]    # 270° horario
         ],
         'S': [
-            [[0,1,1],[1,1,0]],
-            [[1,0],[1,1],[0,1]]
+            [[0,1,1],[1,1,0]],     # horizontal
+            [[1,0],[1,1],[0,1]]    # vertical
         ],
         'Z': [
-            [[1,1,0],[0,1,1]],
-            [[0,1],[1,1],[1,0]]
+            [[1,1,0],[0,1,1]],     # horizontal
+            [[0,1],[1,1],[1,0]]    # vertical
         ],
         'J': [
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]],
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]]
+            [[1,1,1],[1,0,0]],     # horizontal (J acostada, parte larga abajo)
+            [[1,1],[0,1],[0,1]],   # 90° horario
+            [[0,0,1],[1,1,1]],     # 180° (invertida horizontal)
+            [[1,0],[1,0],[1,1]]    # 270° horario
         ],
         'L': [
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]],
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]]
+            [[1,1,1],[0,0,1]],     # horizontal (L acostada, parte larga abajo)
+            [[0,1],[0,1],[1,1]],   # 90° horario
+            [[1,0,0],[1,1,1]],     # 180° (invertida horizontal)
+            [[1,1],[1,0],[1,0]]    # 270° horario
         ]
     }
     forma = formas[pieza][rot]
     altura_p = len(forma)
     ancho_p = len(forma[0])
 
-    # Crear copia de la matriz
     nueva = matriz.copy()
 
     # Encontrar fila de caída
@@ -909,7 +908,7 @@ def simular_placement(matriz, pieza, rot, col):
         fila_caida = BOARD_ROWS - altura_p
 
     if fila_caida < 0:
-        return None, 0  # No hay espacio
+        return None, 0
 
     # Colocar la pieza
     for i in range(altura_p):
@@ -917,25 +916,22 @@ def simular_placement(matriz, pieza, rot, col):
             if forma[i][j] == 1:
                 nueva[fila_caida + i][col + j] = 1
 
-    # Eliminar líneas completas
     nueva, lineas = eliminar_lineas(nueva)
     return nueva, lineas
 
 def puntuar_tablero(matriz):
     """
     Evalúa la bondad del tablero. Mayor puntuación es mejor.
-    Factores: menos huecos, menos altura, menos irregularidad, líneas recientes ya contadas.
+    Factores: menos huecos, menos altura, menos irregularidad.
     """
     alturas = alturas_columna(matriz)
     huecos = contar_huecos(matriz)
     bump = calcular_bumpiness(alturas)
     altura_max = max(alturas) if alturas else 0
 
-    # Pesos (ajustables)
     PESO_HUECOS = -10
     PESO_ALTURA = -1
     PESO_BUMP = -0.5
-    PESO_LINEAS = 100  # Las líneas ya se reflejan en la matriz, pero queremos dar mucho peso a que haya menos altura/huecos después de líneas
 
     puntuacion = (PESO_HUECOS * huecos +
                   PESO_ALTURA * altura_max +
@@ -948,7 +944,7 @@ def mejor_placement(matriz, pieza):
     Devuelve (mejor_puntuacion, mejor_col, mejor_rot)
     Si no hay placement posible, devuelve (-inf, None, None)
     """
-    # Definir formas (mismo diccionario que antes)
+    # Mismas formas que en simular_placement
     formas = {
         'I': [
             [[1,1,1,1]],
@@ -958,9 +954,9 @@ def mejor_placement(matriz, pieza):
             [[1,1],[1,1]]
         ],
         'T': [
-            [[0,1,0],[1,1,1]],
-            [[1,0],[1,1],[1,0]],
             [[1,1,1],[0,1,0]],
+            [[1,0],[1,1],[1,0]],
+            [[0,1,0],[1,1,1]],
             [[0,1],[1,1],[0,1]]
         ],
         'S': [
@@ -972,16 +968,16 @@ def mejor_placement(matriz, pieza):
             [[0,1],[1,1],[1,0]]
         ],
         'J': [
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]],
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]]
+            [[1,1,1],[1,0,0]],
+            [[1,1],[0,1],[0,1]],
+            [[0,0,1],[1,1,1]],
+            [[1,0],[1,0],[1,1]]
         ],
         'L': [
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]],
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]]
+            [[1,1,1],[0,0,1]],
+            [[0,1],[0,1],[1,1]],
+            [[1,0,0],[1,1,1]],
+            [[1,1],[1,0],[1,0]]
         ]
     }
     if pieza not in formas:
@@ -995,7 +991,6 @@ def mejor_placement(matriz, pieza):
     for rot_idx, forma in enumerate(rotaciones):
         ancho_p = len(forma[0])
         for col in range(BOARD_COLS - ancho_p + 1):
-            # Simular colocación
             nuevo_tablero, lineas = simular_placement(matriz, pieza, rot_idx, col)
             if nuevo_tablero is None:
                 continue
@@ -1007,54 +1002,150 @@ def mejor_placement(matriz, pieza):
 
     return mejor_punt, mejor_col, mejor_rot
 
-def colocar_pieza_mejorada(pieza, matriz_tablero, keyboard, col_objetivo, rot_objetivo):
+def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotacion_objetivo, keyboard, spawn_region, cell_w):
     """
-    Coloca la pieza en la posición y rotación específicas.
-    Utiliza el mismo sistema de teclado que el original.
+    Coloca la pieza desde su posición actual de spawn hasta la posición objetivo.
+    Primero rota (en sentido horario con la flecha arriba), luego detecta la nueva posición y mueve horizontalmente.
+    Se asume que la pieza aparece en orientación horizontal (rotación 0).
     """
-    print(f"Colocando pieza {pieza} en columna {col_objetivo} con rotación {rot_objetivo}")
+    # Mismas formas para obtener número de rotaciones
+    formas = {
+        'I': [
+            [[1,1,1,1]],
+            [[1],
+            [1],
+            [1],
+            [1]]
+        ],
 
-    # Asumimos spawn en columna 4 (índice 4) para piezas de ancho 1-4.
-    # Pero el spawn real puede variar. Tomamos como referencia col_actual = 4.
-    col_actual = 4
-    desplazamiento = col_objetivo - col_actual
+        'O': [
+            [[1,1],
+            [1,1]]
+        ],
 
-    # Aplicar rotaciones necesarias
-    if rot_objetivo > 0:
-        print(f"Aplicando {rot_objetivo} rotación(es)")
-        for _ in range(rot_objetivo):
-            keyboard.press(Key.up)
-            time.sleep(0.05)
-            keyboard.release(Key.up)
-            time.sleep(0.05)
+        'J': [  # como en la imagen
+            [[1,0,0],
+            [1,1,1]],
 
+            [[1,1],
+            [1,0],
+            [1,0]],
+
+            [[1,1,1],
+            [0,0,1]],
+
+            [[0,1],
+            [0,1],
+            [1,1]]
+        ],
+
+        'S': [  # como en la imagen
+            [[0,1,1],
+            [1,1,0]],
+
+            [[1,0],
+            [1,1],
+            [0,1]]
+        ],
+
+        'L': [  # como en la imagen
+            [[0,0,1],
+            [1,1,1]],
+
+            [[1,0],
+            [1,0],
+            [1,1]],
+
+            [[1,1,1],
+            [1,0,0]],
+
+            [[1,1],
+            [0,1],
+            [0,1]]
+        ],
+
+        'T': [  # como en la imagen
+            [[0,1,0],
+            [1,1,1]],
+
+            [[1,0],
+            [1,1],
+            [1,0]],
+
+            [[1,1,1],
+            [0,1,0]],
+
+            [[0,1],
+            [1,1],
+            [0,1]]
+        ],
+
+        'Z': [
+            [[1,1,0],
+            [0,1,1]],
+
+            [[0,1],
+            [1,1],
+            [1,0]]
+        ]
+    }
+    
+    num_rot = len(formas[pieza])
+    rot_inicial = 0  # Siempre aparece en rotación 0 (horizontal)
+    # Calculamos cuántas veces hay que presionar arriba para llegar a la rotación objetivo (sentido horario)
+    rot_necesarias = (rotacion_objetivo - rot_inicial) % num_rot
+    
+    print(f"Rotando {rot_necesarias} veces desde rotación inicial")
+    
+    # Aplicar rotaciones
+    for _ in range(rot_necesarias):
+        keyboard.press(Key.up)
+        time.sleep(0.05)
+        keyboard.release(Key.up)
+        time.sleep(0.1)  # esperar a que la pieza se estabilice
+    
+    # Después de rotar, capturar de nuevo la zona spawn para obtener la nueva columna
+    spawn_img = capture_screen(spawn_region)
+    piezas_detectadas = detectar_piezas_spawn(spawn_img)
+    
+    if not piezas_detectadas:
+        print("Error: No se pudo detectar la pieza después de rotar. Usando columna inicial.")
+        columna_actual = columna_spawn_inicial
+    else:
+        # Tomar la primera pieza detectada (debería ser la misma)
+        x_spawn = piezas_detectadas[0][0]
+        columna_actual = int(round(x_spawn / cell_w))
+        columna_actual = max(0, min(columna_actual, BOARD_COLS-1))
+        print(f"Nueva posición después de rotar: columna {columna_actual}")
+    
+    desplazamiento = columna_objetivo - columna_actual
+    print(f"Moviendo desde col {columna_actual} a col {columna_objetivo} (desp={desplazamiento})")
+    
     # Mover horizontalmente
     if desplazamiento > 0:
-        print(f"Moviendo derecha {desplazamiento} veces")
         for _ in range(desplazamiento):
             keyboard.press(Key.right)
             time.sleep(0.05)
             keyboard.release(Key.right)
             time.sleep(0.05)
     elif desplazamiento < 0:
-        print(f"Moviendo izquierda {abs(desplazamiento)} veces")
         for _ in range(abs(desplazamiento)):
             keyboard.press(Key.left)
             time.sleep(0.05)
             keyboard.release(Key.left)
             time.sleep(0.05)
-
-    # Bajar la pieza inmediatamente
+    
+    # Soltar la pieza
     print("Soltando pieza...")
     time.sleep(0.1)
     keyboard.press(Key.space)
     time.sleep(0.05)
     keyboard.release(Key.space)
-
+    
     return True
 
 ########################################
-# BOT MEJORADO (solo esta función se modifica)
+# BOT MEJORADO
 ########################################
 
 def ejecutar_bot():
@@ -1106,13 +1197,13 @@ def ejecutar_bot():
             piezas_siguientes = detectar_piezas_next_hold(siguientes_img)
             piezas_hold = detectar_piezas_next_hold(hold_img)
 
-            # Actualizar estado del hold (lo que realmente vemos en pantalla)
+            # Actualizar estado del hold
             if piezas_hold:
                 pieza_en_hold = piezas_hold[0][4]
             else:
                 pieza_en_hold = None
 
-            # Ordenar piezas siguientes por posición Y (de arriba a abajo = más próximas)
+            # Ordenar piezas siguientes por posición Y (más próximas primero)
             if piezas_siguientes:
                 piezas_siguientes.sort(key=lambda p: p[1])
 
@@ -1126,44 +1217,43 @@ def ejecutar_bot():
 
             # Si hay pieza en spawn y no hay pieza actual, es nueva pieza
             if piezas_spawn and pieza_actual is None:
-                pieza_actual = piezas_spawn[0][4]  # El tipo de pieza
+                pieza_actual = piezas_spawn[0][4]
                 print(f"\n>>> NUEVA PIEZA DETECTADA: {pieza_actual}")
 
-                # Obtener próximas piezas en orden (la primera es la más próxima)
+                # Calcular columna actual de la pieza en spawn
+                x_spawn = piezas_spawn[0][0]
+                columna_spawn = int(round(x_spawn / cell_w))
+                columna_spawn = max(0, min(columna_spawn, BOARD_COLS-1))
+                print(f"Posición detectada: columna {columna_spawn} (x={x_spawn}px, cell_w={cell_w:.1f})")
+
+                # Obtener próximas piezas
                 proximas_piezas = [p[4] for p in piezas_siguientes[:3]] if piezas_siguientes else []
 
-                # Evaluar las opciones
-                # Opción 1: Colocar la pieza actual ahora
-                punt_actual, col_actual, rot_actual = mejor_placement(matriz_tablero, pieza_actual)
-                puede_colocar_actual = col_actual is not None
+                # Evaluar opciones
+                punt_actual, col_objetivo, rot_objetivo = mejor_placement(matriz_tablero, pieza_actual)
+                puede_colocar_actual = col_objetivo is not None
 
-                # Opción 2: Usar hold (guardar o intercambiar)
-                opcion_hold = None  # 'guardar' o 'swap'
+                # Opción de hold
+                opcion_hold = None
                 punt_hold = float('-inf')
                 if not ultimo_hold_usado:
                     if pieza_en_hold is None:
-                        # Simular guardar la actual y luego colocar la siguiente (si existe)
                         if proximas_piezas:
-                            # Simular tablero actual (no cambia porque guardar no coloca)
-                            # Luego colocar la primera siguiente
                             punt_sig, col_sig, rot_sig = mejor_placement(matriz_tablero, proximas_piezas[0])
                             if col_sig is not None:
                                 opcion_hold = 'guardar'
-                                # Bonus por guardar una pieza problemática? Se refleja en la puntuación de la siguiente
                                 punt_hold = punt_sig
                     else:
-                        # Simular intercambiar: la actual va al hold, la del hold sale
-                        # Colocar la pieza que estaba en hold
                         punt_swap, col_swap, rot_swap = mejor_placement(matriz_tablero, pieza_en_hold)
                         if col_swap is not None:
                             opcion_hold = 'swap'
                             punt_hold = punt_swap
 
-                # Decidir acción: la que dé mayor puntuación
+                # Decidir acción
                 if puede_colocar_actual and punt_actual >= punt_hold:
-                    # Colocar pieza actual
                     print(f"Colocando {pieza_actual} (puntuación: {punt_actual:.1f})")
-                    exito = colocar_pieza_mejorada(pieza_actual, matriz_tablero, keyboard, col_actual, rot_actual)
+                    exito = colocar_pieza_mejorada(pieza_actual, columna_spawn, col_objetivo, rot_objetivo,
+                                                    keyboard, spawn_region, cell_w)
                     if exito:
                         print(f"Pieza {pieza_actual} colocada")
                         ultimo_hold_usado = False
@@ -1173,39 +1263,30 @@ def ejecutar_bot():
                     pieza_actual = None
 
                 elif punt_hold > float('-inf') and punt_hold > punt_actual:
-                    # Ejecutar acción de hold
                     if opcion_hold == 'guardar':
                         print(f"Guardando {pieza_actual} en hold (siguiente {proximas_piezas[0]} puntúa {punt_hold:.1f})")
                         keyboard.press(Key.shift)
                         time.sleep(0.05)
                         keyboard.release(Key.shift)
                         ultimo_hold_usado = True
-                        # La pieza actual se guarda, esperar a que aparezca la siguiente
                         pieza_actual = None
                         time.sleep(0.3)
-                        # Nota: la pieza en hold ahora es la actual, pero no la asignamos aún porque vendrá en spawn
-                        # Simplemente esperamos a que la nueva pieza aparezca
                     elif opcion_hold == 'swap':
                         print(f"Intercambiando: {pieza_actual} con {pieza_en_hold} (puntuación {punt_hold:.1f})")
                         keyboard.press(Key.shift)
                         time.sleep(0.05)
                         keyboard.release(Key.shift)
                         ultimo_hold_usado = True
-                        # Después del swap, la pieza que estaba en hold ahora está en spawn
-                        # Debemos esperar a que aparezca y luego colocarla
                         time.sleep(0.3)
-                        # La nueva pieza actual será la que vino del hold, pero la detectaremos en la siguiente iteración
                         pieza_actual = None
                     else:
-                        # No debería ocurrir
                         print("Error en opción de hold")
                         pieza_actual = None
                 else:
-                    # No se puede colocar ni usar hold
                     print(f"No se puede colocar {pieza_actual} y hold no disponible o no mejora")
-                    # Intentar colocar de todas formas (por si acaso)
                     if puede_colocar_actual:
-                        exito = colocar_pieza_mejorada(pieza_actual, matriz_tablero, keyboard, col_actual, rot_actual)
+                        exito = colocar_pieza_mejorada(pieza_actual, columna_spawn, col_objetivo, rot_objetivo,
+                                                        keyboard, spawn_region, cell_w)
                         if exito:
                             print(f"Pieza {pieza_actual} colocada (forzada)")
                         else:
@@ -1214,7 +1295,6 @@ def ejecutar_bot():
                         print(f"No hay lugar para {pieza_actual}, esperando...")
                     pieza_actual = None
 
-            # Pequeña pausa para no saturar
             time.sleep(0.05)
 
     except KeyboardInterrupt:
@@ -1223,7 +1303,6 @@ def ejecutar_bot():
         print(f"Error en el bot: {e}")
         import traceback
         traceback.print_exc()
-
 
 
 ########################################
