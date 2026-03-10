@@ -2,6 +2,43 @@
 # FUNCIONES AUXILIARES PARA EL BOT MEJORADO
 ########################################
 
+# Diccionario único de formas (rotación 0 = horizontal, sentido horario)
+FORMAS_PIEZAS = {
+    'I': [
+        [[1,1,1,1]],               # 0° horizontal
+        [[1],[1],[1],[1]]           # 90° vertical
+    ],
+    'O': [
+        [[1,1],[1,1]]               # única
+    ],
+    'T': [
+        [[0,1,0],[1,1,1]],          # 0° tallo arriba
+        [[1,0],[1,1],[1,0]],        # 90° tallo derecha
+        [[1,1,1],[0,1,0]],          # 180° tallo abajo
+        [[0,1],[1,1],[0,1]]         # 270° tallo izquierda
+    ],
+    'S': [
+        [[0,1,1],[1,1,0]],          # 0° horizontal
+        [[1,0],[1,1],[0,1]]         # 90° vertical
+    ],
+    'Z': [
+        [[1,1,0],[0,1,1]],          # 0° horizontal
+        [[0,1],[1,1],[1,0]]         # 90° vertical
+    ],
+    'J': [
+        [[1,0,0],[1,1,1]],          # 0° tallo arriba izquierda
+        [[1,1],[1,0],[1,0]],        # 90° tallo arriba derecha
+        [[1,1,1],[0,0,1]],          # 180° tallo abajo derecha
+        [[0,1],[0,1],[1,1]]         # 270° tallo abajo izquierda
+    ],
+    'L': [
+        [[0,0,1],[1,1,1]],          # 0° tallo arriba derecha
+        [[1,0],[1,0],[1,1]],        # 90° tallo abajo derecha
+        [[1,1,1],[1,0,0]],          # 180° tallo abajo izquierda
+        [[1,1],[0,1],[0,1]]         # 270° tallo arriba izquierda
+    ]
+}
+
 def alturas_columna(matriz):
     """Calcula la altura de cada columna (fila desde arriba donde hay un bloque)"""
     alturas = []
@@ -50,46 +87,10 @@ def simular_placement(matriz, pieza, rot, col):
     """
     Simula colocar una pieza en la matriz y devuelve el nuevo tablero y líneas eliminadas.
     pieza: tipo de pieza (str)
-    rot: índice de rotación (0..n) - 0 es horizontal
+    rot: índice de rotación (0..n)
     col: columna donde colocar (esquina superior izquierda de la pieza)
     """
-    # Formas con rotación 0 = horizontal
-    formas = {
-        'I': [
-            [[1,1,1,1]],          # horizontal
-            [[1],[1],[1],[1]]      # vertical
-        ],
-        'O': [
-            [[1,1],[1,1]]          # igual en todas
-        ],
-        'T': [
-            [[1,1,1],[0,1,0]],     # horizontal (T acostada)
-            [[1,0],[1,1],[1,0]],   # 90° horario
-            [[0,1,0],[1,1,1]],     # 180° (vertical invertida? cuidado)
-            [[0,1],[1,1],[0,1]]    # 270° horario
-        ],
-        'S': [
-            [[0,1,1],[1,1,0]],     # horizontal
-            [[1,0],[1,1],[0,1]]    # vertical
-        ],
-        'Z': [
-            [[1,1,0],[0,1,1]],     # horizontal
-            [[0,1],[1,1],[1,0]]    # vertical
-        ],
-        'J': [
-            [[1,1,1],[1,0,0]],     # horizontal (J acostada, parte larga abajo)
-            [[1,1],[0,1],[0,1]],   # 90° horario
-            [[0,0,1],[1,1,1]],     # 180° (invertida horizontal)
-            [[1,0],[1,0],[1,1]]    # 270° horario
-        ],
-        'L': [
-            [[1,1,1],[0,0,1]],     # horizontal (L acostada, parte larga abajo)
-            [[0,1],[0,1],[1,1]],   # 90° horario
-            [[1,0,0],[1,1,1]],     # 180° (invertida horizontal)
-            [[1,1],[1,0],[1,0]]    # 270° horario
-        ]
-    }
-    forma = formas[pieza][rot]
+    forma = FORMAS_PIEZAS[pieza][rot]
     altura_p = len(forma)
     ancho_p = len(forma[0])
 
@@ -150,46 +151,10 @@ def mejor_placement(matriz, pieza):
     Devuelve (mejor_puntuacion, mejor_col, mejor_rot)
     Si no hay placement posible, devuelve (-inf, None, None)
     """
-    # Mismas formas que en simular_placement
-    formas = {
-        'I': [
-            [[1,1,1,1]],
-            [[1],[1],[1],[1]]
-        ],
-        'O': [
-            [[1,1],[1,1]]
-        ],
-        'T': [
-            [[1,1,1],[0,1,0]],
-            [[1,0],[1,1],[1,0]],
-            [[0,1,0],[1,1,1]],
-            [[0,1],[1,1],[0,1]]
-        ],
-        'S': [
-            [[0,1,1],[1,1,0]],
-            [[1,0],[1,1],[0,1]]
-        ],
-        'Z': [
-            [[1,1,0],[0,1,1]],
-            [[0,1],[1,1],[1,0]]
-        ],
-        'J': [
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]],
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]]
-        ],
-        'L': [
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]],
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]]
-        ]
-    }
-    if pieza not in formas:
+    if pieza not in FORMAS_PIEZAS:
         return float('-inf'), None, None
 
-    rotaciones = formas[pieza]
+    rotaciones = FORMAS_PIEZAS[pieza]
     mejor_punt = float('-inf')
     mejor_col = None
     mejor_rot = None
@@ -212,76 +177,41 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
     """
     Coloca la pieza desde su posición actual de spawn hasta la posición objetivo.
     Primero rota (en sentido horario con la flecha arriba), luego detecta la nueva posición y mueve horizontalmente.
-    Se asume que la pieza aparece en orientación horizontal (rotación 0).
+    Se asume que la pieza aparece en orientación 0°.
     """
-    # Mismas formas para obtener número de rotaciones
-    formas = {
-        'I': [
-            [[1,1,1,1]],
-            [[1],[1],[1],[1]]
-        ],
-        'O': [
-            [[1,1],[1,1]]
-        ],
-        'T': [
-            [[1,1,1],[0,1,0]],
-            [[1,0],[1,1],[1,0]],
-            [[0,1,0],[1,1,1]],
-            [[0,1],[1,1],[0,1]]
-        ],
-        'S': [
-            [[0,1,1],[1,1,0]],
-            [[1,0],[1,1],[0,1]]
-        ],
-        'Z': [
-            [[1,1,0],[0,1,1]],
-            [[0,1],[1,1],[1,0]]
-        ],
-        'J': [
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]],
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]]
-        ],
-        'L': [
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]],
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]]
-        ]
-    }
-    
-    num_rot = len(formas[pieza])
-    rot_inicial = 0  # Siempre aparece en rotación 0 (horizontal)
-    # Calculamos cuántas veces hay que presionar arriba para llegar a la rotación objetivo (sentido horario)
+    num_rot = len(FORMAS_PIEZAS[pieza])
+    rot_inicial = 0
     rot_necesarias = (rotacion_objetivo - rot_inicial) % num_rot
-    
+
     print(f"Rotando {rot_necesarias} veces desde rotación inicial")
-    
-    # Aplicar rotaciones
-    for _ in range(rot_necesarias):
+
+    # Aplicar rotaciones una por una
+    for i in range(rot_necesarias):
         keyboard.press(Key.up)
         time.sleep(0.05)
         keyboard.release(Key.up)
-        time.sleep(0.1)  # esperar a que la pieza se estabilice
-    
-    # Después de rotar, capturar de nuevo la zona spawn para obtener la nueva columna
-    spawn_img = capture_screen(spawn_region)
-    piezas_detectadas = detectar_piezas_spawn(spawn_img)
-    
-    if not piezas_detectadas:
-        print("Error: No se pudo detectar la pieza después de rotar. Usando columna inicial.")
-        columna_actual = columna_spawn_inicial
+        time.sleep(0.15)  # espera generosa para que la pieza se estabilice
+
+    # Re-detectar la pieza después de rotar (con reintento)
+    columna_actual = columna_spawn_inicial
+    for intento in range(2):
+        time.sleep(0.1)
+        spawn_img = capture_screen(spawn_region)
+        piezas_detectadas = detectar_piezas_spawn(spawn_img)
+        if piezas_detectadas:
+            x_spawn = piezas_detectadas[0][0]
+            columna_actual = int(round(x_spawn / cell_w))
+            columna_actual = max(0, min(columna_actual, BOARD_COLS-1))
+            print(f"Posición después de rotar (intento {intento+1}): columna {columna_actual}")
+            break
+        else:
+            print(f"Intento {intento+1} fallido al detectar pieza después de rotar")
     else:
-        # Tomar la primera pieza detectada (debería ser la misma)
-        x_spawn = piezas_detectadas[0][0]
-        columna_actual = int(round(x_spawn / cell_w))
-        columna_actual = max(0, min(columna_actual, BOARD_COLS-1))
-        print(f"Nueva posición después de rotar: columna {columna_actual}")
-    
+        print("No se pudo detectar la pieza después de rotar. Usando columna inicial.")
+
     desplazamiento = columna_objetivo - columna_actual
     print(f"Moviendo desde col {columna_actual} a col {columna_objetivo} (desp={desplazamiento})")
-    
+
     # Mover horizontalmente
     if desplazamiento > 0:
         for _ in range(desplazamiento):
@@ -295,14 +225,14 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
             time.sleep(0.05)
             keyboard.release(Key.left)
             time.sleep(0.05)
-    
+
     # Soltar la pieza
     print("Soltando pieza...")
     time.sleep(0.1)
     keyboard.press(Key.space)
     time.sleep(0.05)
     keyboard.release(Key.space)
-    
+
     return True
 
 ########################################
