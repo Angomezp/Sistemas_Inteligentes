@@ -965,7 +965,7 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
         keyboard.press(Key.up)
         time.sleep(0.05)
         keyboard.release(Key.up)
-        time.sleep(0.15)  # espera generosa para que la pieza se estabilice
+        time.sleep(0.05)  # espera generosa para que la pieza se estabilice
 
     # Re-detectar la pieza después de rotar (con reintento)
     columna_actual = columna_spawn_inicial
