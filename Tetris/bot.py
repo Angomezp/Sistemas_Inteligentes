@@ -50,42 +50,43 @@ def simular_placement(matriz, pieza, rot, col):
     """
     Simula colocar una pieza en la matriz y devuelve el nuevo tablero y líneas eliminadas.
     pieza: tipo de pieza (str)
-    rot: índice de rotación (0..n)
+    rot: índice de rotación (0..n) - 0 es horizontal
     col: columna donde colocar (esquina superior izquierda de la pieza)
     """
+    # Formas con rotación 0 = horizontal
     formas = {
         'I': [
-            [[1,1,1,1]],
-            [[1],[1],[1],[1]]
+            [[1,1,1,1]],          # horizontal
+            [[1],[1],[1],[1]]      # vertical
         ],
         'O': [
-            [[1,1],[1,1]]
+            [[1,1],[1,1]]          # igual en todas
         ],
         'T': [
-            [[0,1,0],[1,1,1]],
-            [[1,0],[1,1],[1,0]],
-            [[1,1,1],[0,1,0]],
-            [[0,1],[1,1],[0,1]]
+            [[1,1,1],[0,1,0]],     # horizontal (T acostada)
+            [[1,0],[1,1],[1,0]],   # 90° horario
+            [[0,1,0],[1,1,1]],     # 180° (vertical invertida? cuidado)
+            [[0,1],[1,1],[0,1]]    # 270° horario
         ],
         'S': [
-            [[0,1,1],[1,1,0]],
-            [[1,0],[1,1],[0,1]]
+            [[0,1,1],[1,1,0]],     # horizontal
+            [[1,0],[1,1],[0,1]]    # vertical
         ],
         'Z': [
-            [[1,1,0],[0,1,1]],
-            [[0,1],[1,1],[1,0]]
+            [[1,1,0],[0,1,1]],     # horizontal
+            [[0,1],[1,1],[1,0]]    # vertical
         ],
         'J': [
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]],
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]]
+            [[1,1,1],[1,0,0]],     # horizontal (J acostada, parte larga abajo)
+            [[1,1],[0,1],[0,1]],   # 90° horario
+            [[0,0,1],[1,1,1]],     # 180° (invertida horizontal)
+            [[1,0],[1,0],[1,1]]    # 270° horario
         ],
         'L': [
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]],
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]]
+            [[1,1,1],[0,0,1]],     # horizontal (L acostada, parte larga abajo)
+            [[0,1],[0,1],[1,1]],   # 90° horario
+            [[1,0,0],[1,1,1]],     # 180° (invertida horizontal)
+            [[1,1],[1,0],[1,0]]    # 270° horario
         ]
     }
     forma = formas[pieza][rot]
@@ -149,6 +150,7 @@ def mejor_placement(matriz, pieza):
     Devuelve (mejor_puntuacion, mejor_col, mejor_rot)
     Si no hay placement posible, devuelve (-inf, None, None)
     """
+    # Mismas formas que en simular_placement
     formas = {
         'I': [
             [[1,1,1,1]],
@@ -158,9 +160,9 @@ def mejor_placement(matriz, pieza):
             [[1,1],[1,1]]
         ],
         'T': [
-            [[0,1,0],[1,1,1]],
-            [[1,0],[1,1],[1,0]],
             [[1,1,1],[0,1,0]],
+            [[1,0],[1,1],[1,0]],
+            [[0,1,0],[1,1,1]],
             [[0,1],[1,1],[0,1]]
         ],
         'S': [
@@ -172,16 +174,16 @@ def mejor_placement(matriz, pieza):
             [[0,1],[1,1],[1,0]]
         ],
         'J': [
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]],
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]]
+            [[1,1,1],[1,0,0]],
+            [[1,1],[0,1],[0,1]],
+            [[0,0,1],[1,1,1]],
+            [[1,0],[1,0],[1,1]]
         ],
         'L': [
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]],
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]]
+            [[1,1,1],[0,0,1]],
+            [[0,1],[0,1],[1,1]],
+            [[1,0,0],[1,1,1]],
+            [[1,1],[1,0],[1,0]]
         ]
     }
     if pieza not in formas:
@@ -209,9 +211,10 @@ def mejor_placement(matriz, pieza):
 def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotacion_objetivo, keyboard, spawn_region, cell_w):
     """
     Coloca la pieza desde su posición actual de spawn hasta la posición objetivo.
-    Primero rota, luego detecta la nueva posición y mueve horizontalmente.
+    Primero rota (en sentido horario con la flecha arriba), luego detecta la nueva posición y mueve horizontalmente.
+    Se asume que la pieza aparece en orientación horizontal (rotación 0).
     """
-    # Definir formas para obtener número de rotaciones
+    # Mismas formas para obtener número de rotaciones
     formas = {
         'I': [
             [[1,1,1,1]],
@@ -221,9 +224,9 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
             [[1,1],[1,1]]
         ],
         'T': [
-            [[0,1,0],[1,1,1]],
-            [[1,0],[1,1],[1,0]],
             [[1,1,1],[0,1,0]],
+            [[1,0],[1,1],[1,0]],
+            [[0,1,0],[1,1,1]],
             [[0,1],[1,1],[0,1]]
         ],
         'S': [
@@ -235,21 +238,22 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
             [[0,1],[1,1],[1,0]]
         ],
         'J': [
-            [[1,0,0],[1,1,1]],
-            [[1,1],[1,0],[1,0]],
-            [[1,1,1],[0,0,1]],
-            [[0,1],[0,1],[1,1]]
+            [[1,1,1],[1,0,0]],
+            [[1,1],[0,1],[0,1]],
+            [[0,0,1],[1,1,1]],
+            [[1,0],[1,0],[1,1]]
         ],
         'L': [
-            [[0,0,1],[1,1,1]],
-            [[1,0],[1,0],[1,1]],
-            [[1,1,1],[1,0,0]],
-            [[1,1],[0,1],[0,1]]
+            [[1,1,1],[0,0,1]],
+            [[0,1],[0,1],[1,1]],
+            [[1,0,0],[1,1,1]],
+            [[1,1],[1,0],[1,0]]
         ]
     }
     
     num_rot = len(formas[pieza])
-    rot_inicial = 0
+    rot_inicial = 0  # Siempre aparece en rotación 0 (horizontal)
+    # Calculamos cuántas veces hay que presionar arriba para llegar a la rotación objetivo (sentido horario)
     rot_necesarias = (rotacion_objetivo - rot_inicial) % num_rot
     
     print(f"Rotando {rot_necesarias} veces desde rotación inicial")
