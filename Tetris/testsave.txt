@@ -24,8 +24,8 @@ COLOR_TOLERANCE = 30
 
 BOARD_ROWS = 20
 BOARD_COLS = 10
-SPAWN_ROWS = 7
-INSIDE_SPAWN_ROWS = 4
+SPAWN_ROWS = 8
+INSIDE_SPAWN_ROWS = 5
 
 ########################################
 # COLORES DE PIEZAS POR ZONA
@@ -912,9 +912,9 @@ def puntuar_tablero(matriz):
     bump = calcular_bumpiness(alturas)
     altura_max = max(alturas) if alturas else 0
 
-    PESO_HUECOS = -12
-    PESO_ALTURA = -10
-    PESO_BUMP = -0.5
+    PESO_HUECOS = -25
+    PESO_ALTURA = -5
+    PESO_BUMP = -1
 
     puntuacion = (PESO_HUECOS * huecos +
                   PESO_ALTURA * altura_max +
@@ -952,30 +952,33 @@ def mejor_placement(matriz, pieza):
 def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotacion_objetivo, keyboard, spawn_region, cell_w, nivel):
     """
     Coloca la pieza desde su posición actual de spawn hasta la posición objetivo.
-    Los tiempos de espera se ajustan según el nivel (mayor nivel = menor espera).
+    Los tiempos de espera se ajustan según el nivel.
+    Las rotaciones se realizan con las teclas óptimas: X (horario), Z (antihorario), A (180°).
     """
-    # Definir tiempos base (en segundos) - estos son los que funcionan bien hasta nivel 4
+    # Definir tiempos base (en segundos) - estos funcionan bien hasta nivel 4
     tiempos_base = {
-        'pulsacion': 0.03,      # duración de la pulsación de tecla
-        'post_pulsacion': 0.05, # espera después de soltar la tecla
-        'post_rotacion': 0.1,   # espera después de cada rotación antes de siguiente acción
-        'pre_soltar': 0.07,      # espera antes de soltar la pieza con espacio
-        'reintento': 0.1        # espera entre reintentos de detección
+        'pulsacion': 0.035,      # duración de la pulsación de tecla
+        'post_pulsacion': 0.057, # espera después de soltar la tecla
+        'post_rotacion': 0.05,   # espera después de cada rotación
+        'pre_soltar': 0.05,      # espera antes de soltar la pieza
+        'reintento': 0.08        # espera entre reintentos de detección
     }
 
     # Factor de escala según el nivel (a mayor nivel, menor tiempo)
-    if nivel <= 4:
-        factor = 1.0
-    elif nivel == 5:
+    if nivel <= 3:
+        factor = 0.88
+    elif nivel == 4:
         factor = 0.7
+    elif nivel == 5:
+        factor = 0.54
     elif nivel == 6:
-        factor = 0.6
+        factor = 0.44
     elif nivel == 7:
-        factor = 0.5
+        factor = 0.33
     else:
-        factor = 0.4  # niveles muy altos
+        factor = 0.3  # niveles muy altos
 
-    # Calcular tiempos reales (con un mínimo para evitar valores demasiado pequeños)
+    # Calcular tiempos reales con mínimo
     t_puls = max(tiempos_base['pulsacion'] * factor, 0.02)
     t_post_puls = max(tiempos_base['post_pulsacion'] * factor, 0.02)
     t_post_rot = max(tiempos_base['post_rotacion'] * factor, 0.03)
@@ -983,19 +986,39 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
     t_reintento = max(tiempos_base['reintento'] * factor, 0.03)
 
     num_rot = len(FORMAS_PIEZAS[pieza])
-    rot_inicial = 0
-    rot_necesarias = (rotacion_objetivo - rot_inicial) % num_rot
 
-    print(f"Rotando {rot_necesarias} veces (nivel {nivel}, factor {factor:.2f})")
+    # --- Rotación óptima según la pieza y el objetivo ---
+    if num_rot == 4:
+        if rotacion_objetivo == 1:
+            tecla = 'x'
+            pulsaciones = 1
+        elif rotacion_objetivo == 2:
+            tecla = 'a'
+            pulsaciones = 1
+        elif rotacion_objetivo == 3:
+            tecla = 'z'
+            pulsaciones = 1
+        else:
+            pulsaciones = 0
+    elif num_rot == 2:
+        if rotacion_objetivo == 1:
+            tecla = 'x'   # también podría ser 'z', ambas sirven
+            pulsaciones = 1
+        else:
+            pulsaciones = 0
+    else:  # num_rot == 1 (pieza O)
+        pulsaciones = 0
 
-    # Aplicar rotaciones una por una
-    for _ in range(rot_necesarias):
-        keyboard.press(Key.up)
+    if pulsaciones > 0:
+        print(f"Aplicando rotación: tecla '{tecla}' (para objetivo {rotacion_objetivo})")
+        keyboard.press(tecla)
         time.sleep(t_puls)
-        keyboard.release(Key.up)
-        time.sleep(t_post_rot)  # espera después de la rotación
+        keyboard.release(tecla)
+        time.sleep(t_post_rot)
+    else:
+        print("No se requiere rotación")
 
-    # Re-detectar la pieza después de rotar (con reintento)
+    # --- Re‑detectar la pieza después de rotar (con reintento) ---
     columna_actual = columna_spawn_inicial
     for intento in range(2):
         time.sleep(t_reintento)
