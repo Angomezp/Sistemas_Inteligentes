@@ -114,17 +114,7 @@ def ejecutar_bot():
             n = 1
             while n*(n+2) <= lineas:
                 n += 1
-            return n  # el nivel es n (porque cuando se alcanzan las líneas del nivel n, se pasa al n+1? Cuidado)
-            # Si lineas = 3, n=1 da 3 <=3, luego n=2 da 8>3, entonces n=2? No, queremos nivel 2 cuando se han completado 3 líneas (pasaste a nivel 2). Entonces nivel = n donde n*(n+2) <= lineas? Probemos:
-            # lineas=2 -> n=1 da 3>2, entonces n=1 no cumple, así que nivel=1.
-            # lineas=3 -> n=1 cumple, n=2 no, entonces n=1, pero debería ser nivel 2. Así que nivel = n+1 cuando se alcanza la meta.
-            # Mejor: nivel = 1 + el mayor n tal que n*(n+2) < lineas? 
-            # Definamos: meta para nivel k es la suma hasta k, es decir, nivel k requiere haber completado al menos la suma de los primeros k-1 términos? 
-            # Normalmente: nivel 1: 0-2 líneas (aún no se ha pasado), nivel 2: después de 3 líneas, etc.
-            # Entonces si lineas >= 3, estás en nivel 2. Si lineas >= 8, nivel 3, etc.
-            # Entonces nivel = 1 + el mayor n tal que n*(n+2) <= lineas? Para lineas=3, n=1 da 3<=3, entonces n=1, nivel=2. Para lineas=8, n=2 da 8<=8, nivel=3. Correcto.
-            # Para lineas=2, ningún n cumple porque 1*3=3>2, entonces nivel=1.
-            # Así que:
+            return n 
             nivel = 1
             acum = 0
             meta = 3
@@ -279,3 +269,4 @@ def ejecutar_bot():
         print(f"Error en el bot: {e}")
         import traceback
         traceback.print_exc()
+
