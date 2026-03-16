@@ -913,8 +913,8 @@ def puntuar_tablero(matriz):
     altura_max = max(alturas) if alturas else 0
 
     PESO_HUECOS = -25
-    PESO_ALTURA = -5
-    PESO_BUMP = -1
+    PESO_ALTURA = -10
+    PESO_BUMP = -2
 
     puntuacion = (PESO_HUECOS * huecos +
                   PESO_ALTURA * altura_max +
@@ -958,8 +958,8 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
     # Definir tiempos base (en segundos) - estos funcionan bien hasta nivel 4
     tiempos_base = {
         'pulsacion': 0.035,      # duración de la pulsación de tecla
-        'post_pulsacion': 0.057, # espera después de soltar la tecla
-        'post_rotacion': 0.05,   # espera después de cada rotación
+        'post_pulsacion': 0.06, # espera después de soltar la tecla
+        'post_rotacion': 0.055,   # espera después de cada rotación
         'pre_soltar': 0.05,      # espera antes de soltar la pieza
         'reintento': 0.08        # espera entre reintentos de detección
     }
@@ -968,15 +968,15 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
     if nivel <= 3:
         factor = 0.88
     elif nivel == 4:
-        factor = 0.7
+        factor = 0.755
     elif nivel == 5:
-        factor = 0.54
+        factor = 0.6
     elif nivel == 6:
-        factor = 0.44
+        factor = 0.5
     elif nivel == 7:
-        factor = 0.33
+        factor = 0.38
     else:
-        factor = 0.3  # niveles muy altos
+        factor = 0.25  # niveles muy altos
 
     # Calcular tiempos reales con mínimo
     t_puls = max(tiempos_base['pulsacion'] * factor, 0.02)
@@ -1010,13 +1010,10 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
         pulsaciones = 0
 
     if pulsaciones > 0:
-        print(f"Aplicando rotación: tecla '{tecla}' (para objetivo {rotacion_objetivo})")
         keyboard.press(tecla)
         time.sleep(t_puls)
         keyboard.release(tecla)
         time.sleep(t_post_rot)
-    else:
-        print("No se requiere rotación")
 
     # --- Re‑detectar la pieza después de rotar (con reintento) ---
     columna_actual = columna_spawn_inicial
@@ -1028,15 +1025,9 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
             x_spawn = piezas_detectadas[0][0]
             columna_actual = int(round(x_spawn / cell_w))
             columna_actual = max(0, min(columna_actual, BOARD_COLS-1))
-            print(f"Posición después de rotar (intento {intento+1}): columna {columna_actual}")
             break
-        else:
-            print(f"Intento {intento+1} fallido al detectar pieza después de rotar")
-    else:
-        print("No se pudo detectar la pieza después de rotar. Usando columna inicial.")
-
+        
     desplazamiento = columna_objetivo - columna_actual
-    print(f"Moviendo desde col {columna_actual} a col {columna_objetivo} (desp={desplazamiento})")
 
     # Mover horizontalmente
     if desplazamiento > 0:
@@ -1053,7 +1044,6 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
             time.sleep(t_post_puls)
 
     # Soltar la pieza
-    print("Soltando pieza...")
     time.sleep(t_pre_soltar)
     keyboard.press(Key.space)
     time.sleep(t_puls)
@@ -1079,7 +1069,6 @@ def ejecutar_bot():
     # Variables de estado
     pieza_actual = None
     pieza_en_hold = None
-    pieza_guardada_hold = None
     ultimo_hold_usado = False
     contador_fallos = 0
     lineas_totales = 0  # acumulador de líneas eliminadas desde el inicio de la partida
@@ -1089,11 +1078,6 @@ def ejecutar_bot():
         if lineas < 3:
             return 1
         else:
-            # Buscar el mayor n tal que n*(n+2) <= lineas
-#            n = 1
-#            while n*(n+2) <= lineas:
-#                n += 1
-#            return n 
             nivel = 1
             acum = 0
             meta = 3
@@ -1138,24 +1122,14 @@ def ejecutar_bot():
             if piezas_siguientes:
                 piezas_siguientes.sort(key=lambda p: p[1])
 
-            # Mostrar información de debug
-            if piezas_spawn:
-                print(f"\nPieza en spawn: {piezas_spawn[0][4]}")
-            if piezas_siguientes:
-                print(f"Siguientes (en orden): {[p[4] for p in piezas_siguientes[:4]]}")
-            if pieza_en_hold:
-                print(f"Hold: {pieza_en_hold}")
-
             # Si hay pieza en spawn y no hay pieza actual, es nueva pieza
             if piezas_spawn and pieza_actual is None:
                 pieza_actual = piezas_spawn[0][4]
-                print(f"\n>>> NUEVA PIEZA DETECTADA: {pieza_actual}")
 
                 # Calcular columna actual de la pieza en spawn
                 x_spawn = piezas_spawn[0][0]
                 columna_spawn = int(round(x_spawn / cell_w))
                 columna_spawn = max(0, min(columna_spawn, BOARD_COLS-1))
-                print(f"Posición detectada: columna {columna_spawn} (x={x_spawn}px, cell_w={cell_w:.1f})")
 
                 # Obtener próximas piezas
                 proximas_piezas = [p[4] for p in piezas_siguientes[:3]] if piezas_siguientes else []
@@ -1187,23 +1161,18 @@ def ejecutar_bot():
                     lineas_totales += lineas_eliminadas
                     # Calcular nivel actual
                     nivel = calcular_nivel(lineas_totales)
-                    print(f"Líneas totales: {lineas_totales} - Nivel: {nivel}")
 
-                    print(f"Colocando {pieza_actual} (puntuación: {punt_actual:.1f})")
                     exito = colocar_pieza_mejorada(pieza_actual, columna_spawn, col_objetivo, rot_objetivo,
                                                     keyboard, spawn_region, cell_w, nivel)
                     if exito:
-                        print(f"Pieza {pieza_actual} colocada")
                         ultimo_hold_usado = False
                     else:
-                        print(f"Error colocando {pieza_actual}")
                         contador_fallos += 1
                     pieza_actual = None
 
                 elif punt_hold > float('-inf') and punt_hold > punt_actual:
                     # Acción de hold: no se colocan piezas, por lo tanto no hay líneas nuevas
                     if opcion_hold == 'guardar':
-                        print(f"Guardando {pieza_actual} en hold (siguiente {proximas_piezas[0]} puntúa {punt_hold:.1f})")
                         keyboard.press(Key.shift)
                         time.sleep(0.05)
                         keyboard.release(Key.shift)
@@ -1211,7 +1180,6 @@ def ejecutar_bot():
                         pieza_actual = None
                         time.sleep(0.3)
                     elif opcion_hold == 'swap':
-                        print(f"Intercambiando: {pieza_actual} con {pieza_en_hold} (puntuación {punt_hold:.1f})")
                         keyboard.press(Key.shift)
                         time.sleep(0.05)
                         keyboard.release(Key.shift)
@@ -1219,25 +1187,22 @@ def ejecutar_bot():
                         time.sleep(0.3)
                         pieza_actual = None
                     else:
-                        print("Error en opción de hold")
                         pieza_actual = None
                 else:
                     # No se puede colocar ni usar hold
-                    print(f"No se puede colocar {pieza_actual} y hold no disponible o no mejora")
                     if puede_colocar_actual:
                         # Forzar colocación
                         _, lineas_eliminadas = simular_placement(matriz_tablero, pieza_actual, rot_objetivo, col_objetivo)
                         lineas_totales += lineas_eliminadas
                         nivel = calcular_nivel(lineas_totales)
-                        print(f"Líneas totales: {lineas_totales} - Nivel: {nivel}")
                         exito = colocar_pieza_mejorada(pieza_actual, columna_spawn, col_objetivo, rot_objetivo,
                                                         keyboard, spawn_region, cell_w, nivel)
                         if exito:
-                            print(f"Pieza {pieza_actual} colocada (forzada)")
+                            pass
                         else:
                             contador_fallos += 1
                     else:
-                        print(f"No hay lugar para {pieza_actual}, esperando...")
+                        pass
                     pieza_actual = None
 
             time.sleep(0.05)
@@ -1287,5 +1252,3 @@ def menu():
 if __name__ == "__main__":
     cargar_colores_calibrados()
     menu()
-
-print("exito")
