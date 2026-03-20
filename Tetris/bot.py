@@ -1033,10 +1033,10 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
         factor = 0.8
         factor_reintento = 1.09
     elif nivel == 6:
-        factor = 0.76
-        factor_reintento = 1.09
+        factor = 0.77
+        factor_reintento = 1.07
     elif nivel == 7:
-        factor = 0.70
+        factor = 0.74
         factor_reintento = 1.03
     else:
         factor = 0.7 # niveles muy altos
