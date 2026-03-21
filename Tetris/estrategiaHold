@@ -1,8 +1,7 @@
-def mejor_placement_rapido(matriz, pieza, nivel=7, num_candidatos_cols=6):
+def mejor_placement_rapido(matriz, pieza, nivel=7):
     """
-    Estrategia intermedia para niveles altos (>=7). Evalúa las mejores rotaciones
-    (según heurística de altura) y dentro de ellas solo las mejores columnas.
-    A mayor nivel, menos rotaciones y menos columnas se evalúan.
+    Estrategia para niveles >=7. En nivel 7 evalúa todas las columnas (como el original).
+    A partir de nivel 8 usa filtro de columnas (5 columnas) y número de rotaciones reducido.
     """
     if pieza not in FORMAS_PIEZAS:
         return float('-inf'), None, None
@@ -10,21 +9,13 @@ def mejor_placement_rapido(matriz, pieza, nivel=7, num_candidatos_cols=6):
     rotaciones = FORMAS_PIEZAS[pieza]
     alturas_actuales = alturas_columna(matriz)
     
-    # Ajustar número de rotaciones según nivel
+    # Número de rotaciones según nivel (igual que el original)
     if nivel >= 10:
         num_rot = 1
     elif nivel >= 8:
         num_rot = 2
-    else:
+    else:  # nivel == 7
         num_rot = 3
-    
-    # Ajustar número de columnas candidatas según nivel
-    if nivel >= 10:
-        num_cols = 4
-    elif nivel >= 8:
-        num_cols = 5
-    else:
-        num_cols = num_candidatos_cols  # por defecto 6
     
     # Calcular heurística de altura para cada rotación (menor altura mejor)
     puntajes_rotacion = []
@@ -33,7 +24,7 @@ def mejor_placement_rapido(matriz, pieza, nivel=7, num_candidatos_cols=6):
         altura_p = len(forma)
         mejor_altura = BOARD_ROWS + 1
         for col in range(BOARD_COLS - ancho_p + 1):
-            # Calcular fila de caída aproximada
+            # Calcular fila de caída aproximada (rápida)
             fila_caida = BOARD_ROWS - altura_p
             for i in range(altura_p):
                 for j in range(ancho_p):
@@ -55,31 +46,39 @@ def mejor_placement_rapido(matriz, pieza, nivel=7, num_candidatos_cols=6):
     mejor_col = None
     mejor_rot = None
     
-    # Para cada rotación seleccionada, evaluar solo las mejores columnas
+    # Para cada rotación seleccionada, evaluar columnas
     for rot_idx in rotaciones_a_evaluar:
         forma = rotaciones[rot_idx]
         ancho_p = len(forma[0])
         altura_p = len(forma)
         
-        # Precalcular columnas posibles
         columnas_posibles = list(range(BOARD_COLS - ancho_p + 1))
         
-        # Si hay pocas columnas, evaluamos todas
-        if len(columnas_posibles) <= num_cols:
+        # Para nivel 7: evaluar todas las columnas (como el original)
+        if nivel == 7:
             columnas_a_evaluar = columnas_posibles
         else:
-            # Heurística rápida para columnas: altura máxima + distancia al centro
-            puntajes_col = []
-            for col in columnas_posibles:
-                alturas_afectadas = [alturas_actuales[col + j] for j in range(ancho_p)]
-                max_altura = max(alturas_afectadas) if alturas_afectadas else 0
-                distancia = abs((col + ancho_p / 2) - 4.5)
-                punt_col = max_altura + distancia * 0.5
-                puntajes_col.append((col, punt_col))
-            puntajes_col.sort(key=lambda x: x[1])
-            columnas_a_evaluar = [c[0] for c in puntajes_col[:num_cols]]
+            # Para nivel >=8: usar filtro heurístico de columnas
+            # Número de columnas candidatas según nivel
+            if nivel >= 10:
+                num_cols = 4
+            else:  # nivel 8 o 9
+                num_cols = 5
+            
+            if len(columnas_posibles) <= num_cols:
+                columnas_a_evaluar = columnas_posibles
+            else:
+                puntajes_col = []
+                for col in columnas_posibles:
+                    alturas_afectadas = [alturas_actuales[col + j] for j in range(ancho_p)]
+                    max_altura = max(alturas_afectadas) if alturas_afectadas else 0
+                    distancia = abs((col + ancho_p / 2) - 4.5)
+                    punt_col = max_altura + distancia * 0.5
+                    puntajes_col.append((col, punt_col))
+                puntajes_col.sort(key=lambda x: x[1])
+                columnas_a_evaluar = [c[0] for c in puntajes_col[:num_cols]]
         
-        # Evaluar columnas candidatas
+        # Evaluar columnas seleccionadas
         for col in columnas_a_evaluar:
             nuevo_tablero, lineas = simular_placement(matriz, pieza, rot_idx, col)
             if nuevo_tablero is None:
@@ -90,7 +89,7 @@ def mejor_placement_rapido(matriz, pieza, nivel=7, num_candidatos_cols=6):
                 mejor_col = col
                 mejor_rot = rot_idx
     
-    # Si no se encontró colocación en las rotaciones seleccionadas, evaluar el resto (situación rara)
+    # Fallback: si no se encontró, evaluar el resto de rotaciones (raro)
     if mejor_col is None:
         rotaciones_restantes = [i for i in range(len(rotaciones)) if i not in rotaciones_a_evaluar]
         for rot_idx in rotaciones_restantes:
