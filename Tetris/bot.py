@@ -903,6 +903,19 @@ def simular_placement(matriz, pieza, rot, col):
     nueva, lineas = eliminar_lineas(nueva)
     return nueva, lineas
 
+def calcular_nivel(lineas):
+        if lineas < 3:
+            return 1
+        else:
+            nivel = 1
+            acum = 0
+            meta = 3
+            while lineas >= acum + meta:
+                acum += meta
+                nivel += 1
+                meta += 2
+            return nivel
+
 def puntuar_tablero(matriz, lineas_eliminadas=0):
     """
     Evalúa la bondad del tablero. Mayor puntuación es mejor.
@@ -913,7 +926,7 @@ def puntuar_tablero(matriz, lineas_eliminadas=0):
     huecos = contar_huecos(matriz)
     bump = calcular_bumpiness(alturas)
     altura_max = max(alturas) if alturas else 0
-
+    nivel = calcular_nivel(lineas_eliminadas)
     # Recompensa masiva si el tablero queda limpio
     if altura_max == 0:
         return 10000
@@ -937,6 +950,9 @@ def puntuar_tablero(matriz, lineas_eliminadas=0):
         bonus = 1000
     else:
         bonus = 0
+    
+    if nivel >= 7:
+        PESO_ALTURA *= 1.5
 
     puntuacion = (PESO_LINEAS * lineas_eliminadas +
                   PESO_HUECOS * huecos +
@@ -977,49 +993,63 @@ def mejor_placement(matriz, pieza):
 
     return mejor_punt, mejor_col, mejor_rot
 
-def mejor_placement_rapido(matriz, pieza, num_candidatos=6):
+def mejor_placement_rapido(matriz, pieza, nivel=7):
     """
-    Estrategia rápida pero precisa para niveles altos (>=7).
-    Evalúa todas las rotaciones, pero solo las mejores 'num_candidatos' columnas por rotación
-    según una heurística simple (altura máxima en la zona + distancia al centro).
-    Usa la misma función de puntuación que la estrategia robusta.
+    Estrategia intermedia para niveles altos (>=7). Evalúa las mejores 'num_rot' rotaciones
+    (según heurística de altura) con todas las columnas. Si no encuentra colocación,
+    evalúa las rotaciones restantes.
     """
     if pieza not in FORMAS_PIEZAS:
         return float('-inf'), None, None
 
     rotaciones = FORMAS_PIEZAS[pieza]
+    alturas_actuales = alturas_columna(matriz)
+    
+    # Determinar cuántas rotaciones evaluar según nivel
+    if nivel >= 10:
+        num_rot = 1
+    elif nivel >= 8:
+        num_rot = 2
+    else:
+        num_rot = 3
+    
+    # Calcular heurística rápida para cada rotación: altura máxima que alcanzaría la pieza
+    # si se coloca en la columna que minimice esa altura (simulación rápida)
+    puntajes_rotacion = []
+    for rot_idx, forma in enumerate(rotaciones):
+        ancho_p = len(forma[0])
+        altura_p = len(forma)
+        # Encontrar la columna que minimiza la altura final de la pieza (altura de caída + altura de la pieza)
+        mejor_altura = BOARD_ROWS + 1
+        for col in range(BOARD_COLS - ancho_p + 1):
+            # Calcular fila de caída aproximada (no es exacta pero da una idea)
+            fila_caida = BOARD_ROWS - altura_p
+            for i in range(altura_p):
+                for j in range(ancho_p):
+                    if forma[i][j] == 1:
+                        # Buscar la primera fila desde abajo donde hay bloque
+                        for f in range(fila_caida, -1, -1):
+                            if matriz[f][col + j] == 1:
+                                fila_caida = min(fila_caida, f - i - 1)
+                                break
+            altura_final = BOARD_ROWS - fila_caida
+            if altura_final < mejor_altura:
+                mejor_altura = altura_final
+        puntajes_rotacion.append((rot_idx, mejor_altura))
+    
+    # Ordenar rotaciones por menor altura (mejor)
+    puntajes_rotacion.sort(key=lambda x: x[1])
+    rotaciones_a_evaluar = [r[0] for r in puntajes_rotacion[:num_rot]]
+    
     mejor_punt = float('-inf')
     mejor_col = None
     mejor_rot = None
     
-    # Alturas actuales para la heurística de filtrado
-    alturas_actuales = alturas_columna(matriz)
-    centro_ideal = 4.5  # centro del tablero (entre col 4 y 5)
-
-    for rot_idx, forma in enumerate(rotaciones):
+    # Evaluar rotaciones seleccionadas con todas las columnas
+    for rot_idx in rotaciones_a_evaluar:
+        forma = rotaciones[rot_idx]
         ancho_p = len(forma[0])
-        columnas_posibles = list(range(BOARD_COLS - ancho_p + 1))
-        
-        # Si hay pocas columnas, evaluamos todas directamente
-        if len(columnas_posibles) <= num_candidatos:
-            columnas_a_evaluar = columnas_posibles
-        else:
-            # Calcular puntaje heurístico para cada columna (menor es mejor)
-            puntajes_columna = []
-            for col in columnas_posibles:
-                # Altura máxima en las columnas que ocupará la pieza (estimación)
-                alturas_afectadas = [alturas_actuales[col + j] for j in range(ancho_p)]
-                max_altura = max(alturas_afectadas) if alturas_afectadas else 0
-                # Distancia al centro
-                distancia_centro = abs((col + ancho_p / 2) - centro_ideal)
-                # Heurística: priorizar columnas bajas y cercanas al centro
-                punt_heuristica = max_altura + distancia_centro * 0.5
-                puntajes_columna.append((col, punt_heuristica))
-            
-            # Ordenar y quedarse con las mejores 'num_candidatos'
-            columnas_a_evaluar = [col for col, _ in sorted(puntajes_columna, key=lambda x: x[1])[:num_candidatos]]
-        
-        for col in columnas_a_evaluar:
+        for col in range(BOARD_COLS - ancho_p + 1):
             nuevo_tablero, lineas = simular_placement(matriz, pieza, rot_idx, col)
             if nuevo_tablero is None:
                 continue
@@ -1028,7 +1058,23 @@ def mejor_placement_rapido(matriz, pieza, num_candidatos=6):
                 mejor_punt = punt
                 mejor_col = col
                 mejor_rot = rot_idx
-
+    
+    # Si no se encontró colocación en las rotaciones seleccionadas, evaluar el resto
+    if mejor_col is None:
+        rotaciones_restantes = [i for i in range(len(rotaciones)) if i not in rotaciones_a_evaluar]
+        for rot_idx in rotaciones_restantes:
+            forma = rotaciones[rot_idx]
+            ancho_p = len(forma[0])
+            for col in range(BOARD_COLS - ancho_p + 1):
+                nuevo_tablero, lineas = simular_placement(matriz, pieza, rot_idx, col)
+                if nuevo_tablero is None:
+                    continue
+                punt = puntuar_tablero(nuevo_tablero, lineas)
+                if punt > mejor_punt:
+                    mejor_punt = punt
+                    mejor_col = col
+                    mejor_rot = rot_idx
+  
     return mejor_punt, mejor_col, mejor_rot
 
 def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotacion_objetivo, keyboard, spawn_region, cell_w, nivel, usar_estrategia_rapida=False):
@@ -1039,44 +1085,34 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
     """
     # Definir tiempos base (en segundos) - estos funcionan bien hasta nivel 4
     tiempos_base = {
-        'pulsacion': 0.04,      # duración de la pulsación de tecla
-        'post_pulsacion': 0.08,  # espera después de soltar la tecla
-        'post_rotacion': 0.07,  # espera después de cada rotación
-        'pre_soltar': 0.07,      # espera antes de soltar la pieza
-        'reintento': 0.12        # espera entre reintentos de detección
+        'pulsacion': 0.025,      # duración de la pulsación de tecla
+        'post_pulsacion': 0.025,  # espera después de soltar la tecla
+        'post_rotacion':0.03,  # espera después de cada rotación
+        'pre_soltar': 0.04,      # espera antes de soltar la pieza
+        'reintento': 0.15        # espera entre reintentos de detección
     }
     
      
-    # Factor de escala según el nivel (a mayor nivel, menor tiempo)
-    if nivel <= 3:
-        factor = 0.9 
+    # # Factor de escala según el nivel (a mayor nivel, menor tiempo)
+    if nivel <= 5:
+        factor = 1.0
         factor_reintento = 1.0 
-    elif nivel == 4:
-        factor = 0.9
-        factor_reintento = 1.11
-    elif nivel == 5:
-        factor = 0.8
-        factor_reintento = 1.09
     elif nivel == 6:
-        factor = 0.77
-        factor_reintento = 1.07
+        factor = 0.9
+        factor_reintento = 0.9
     elif nivel == 7:
-        factor = 0.74
-        factor_reintento = 1.03
+        factor = 0.8
+        factor_reintento = 0.8
     else:
-        factor = 0.58 # niveles muy altos
-        factor_reintento = 0.95
+        factor = 0.8 # niveles muy altos
+        factor_reintento = 0.8
 
-    # Si estamos en estrategia rápida, reducir aún más los tiempos
-    if usar_estrategia_rapida:
-        factor *= 0.8
-
-    # Calcular tiempos reales con mínimo
-    t_puls = max(tiempos_base['pulsacion'] * factor, 0.015)
-    t_post_puls = max(tiempos_base['post_pulsacion'] * factor, 0.015)
-    t_post_rot = max(tiempos_base['post_rotacion'] * factor, 0.02)
-    t_pre_soltar = max(tiempos_base['pre_soltar'] * factor, 0.03)
-    t_reintento = min(tiempos_base['reintento'] * factor_reintento, 0.18)
+    #Calcular tiempos reales con mínimo
+    t_puls = max(tiempos_base['pulsacion'] * factor, 0.002)
+    t_post_puls = max(tiempos_base['post_pulsacion'] * factor, 0.002)
+    t_post_rot = max(tiempos_base['post_rotacion'] * factor, 0.0025)
+    t_pre_soltar = max(tiempos_base['pre_soltar'] * factor, 0.0035)
+    t_reintento = max(tiempos_base['reintento'] * factor_reintento, 0.015)
 
     num_rot = len(FORMAS_PIEZAS[pieza])
 
@@ -1170,19 +1206,6 @@ def ejecutar_bot():
     lineas_totales = 0
     nivel = 1  
 
-    def calcular_nivel(lineas):
-        if lineas < 3:
-            return 1
-        else:
-            nivel = 1
-            acum = 0
-            meta = 3
-            while lineas >= acum + meta:
-                acum += meta
-                nivel += 1
-                meta += 2
-            return nivel
-
     try:
         while True:
             # Capturar todas las zonas
@@ -1236,10 +1259,10 @@ def ejecutar_bot():
 
                 # Evaluar la mejor jugada para la pieza actual
                 if usar_estrategia_rapida:
-                    punt, col_objetivo, rot_objetivo = mejor_placement_rapido(matriz_tablero, pieza_actual)
+                    punt, col_objetivo, rot_objetivo = mejor_placement_rapido(matriz_tablero, pieza_actual, nivel)
                 else:
                     punt, col_objetivo, rot_objetivo = mejor_placement(matriz_tablero, pieza_actual)
-
+  
                 # Opción de hold (simplificada, solo si la actual no se puede colocar)
                 puede_colocar = col_objetivo is not None
 
