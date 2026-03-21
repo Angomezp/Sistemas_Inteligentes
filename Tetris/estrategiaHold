@@ -1,108 +1,26 @@
-def mejor_placement_rapido(matriz, pieza, nivel=7):
-    """
-    Estrategia para niveles >=7. En nivel 7 evalúa todas las columnas (como el original).
-    A partir de nivel 8 usa filtro de columnas (5 columnas) y número de rotaciones reducido.
-    """
-    if pieza not in FORMAS_PIEZAS:
-        return float('-inf'), None, None
+def guardar_captura_spawn(img, filename="AzucarMorena.png"):
+    cv2.imwrite(filename, img)
 
-    rotaciones = FORMAS_PIEZAS[pieza]
-    alturas_actuales = alturas_columna(matriz)
-    
-    # Número de rotaciones según nivel (igual que el original)
-    if nivel >= 10:
-        num_rot = 1
-    elif nivel >= 8:
-        num_rot = 2
-    else:  # nivel == 7
-        num_rot = 3
-    
-    # Calcular heurística de altura para cada rotación (menor altura mejor)
-    puntajes_rotacion = []
-    for rot_idx, forma in enumerate(rotaciones):
-        ancho_p = len(forma[0])
-        altura_p = len(forma)
-        mejor_altura = BOARD_ROWS + 1
-        for col in range(BOARD_COLS - ancho_p + 1):
-            # Calcular fila de caída aproximada (rápida)
-            fila_caida = BOARD_ROWS - altura_p
-            for i in range(altura_p):
-                for j in range(ancho_p):
-                    if forma[i][j] == 1:
-                        for f in range(fila_caida, -1, -1):
-                            if matriz[f][col + j] == 1:
-                                fila_caida = min(fila_caida, f - i - 1)
-                                break
-            altura_final = BOARD_ROWS - fila_caida
-            if altura_final < mejor_altura:
-                mejor_altura = altura_final
-        puntajes_rotacion.append((rot_idx, mejor_altura))
-    
-    # Ordenar por altura (menor mejor)
-    puntajes_rotacion.sort(key=lambda x: x[1])
-    rotaciones_a_evaluar = [r[0] for r in puntajes_rotacion[:num_rot]]
-    
-    mejor_punt = float('-inf')
-    mejor_col = None
-    mejor_rot = None
-    
-    # Para cada rotación seleccionada, evaluar columnas
-    for rot_idx in rotaciones_a_evaluar:
-        forma = rotaciones[rot_idx]
-        ancho_p = len(forma[0])
-        altura_p = len(forma)
-        
-        columnas_posibles = list(range(BOARD_COLS - ancho_p + 1))
-        
-        # Para nivel 7: evaluar todas las columnas (como el original)
-        if nivel == 7:
-            columnas_a_evaluar = columnas_posibles
-        else:
-            # Para nivel >=8: usar filtro heurístico de columnas
-            # Número de columnas candidatas según nivel
-            if nivel >= 10:
-                num_cols = 4
-            else:  # nivel 8 o 9
-                num_cols = 5
-            
-            if len(columnas_posibles) <= num_cols:
-                columnas_a_evaluar = columnas_posibles
-            else:
-                puntajes_col = []
-                for col in columnas_posibles:
-                    alturas_afectadas = [alturas_actuales[col + j] for j in range(ancho_p)]
-                    max_altura = max(alturas_afectadas) if alturas_afectadas else 0
-                    distancia = abs((col + ancho_p / 2) - 4.5)
-                    punt_col = max_altura + distancia * 0.5
-                    puntajes_col.append((col, punt_col))
-                puntajes_col.sort(key=lambda x: x[1])
-                columnas_a_evaluar = [c[0] for c in puntajes_col[:num_cols]]
-        
-        # Evaluar columnas seleccionadas
-        for col in columnas_a_evaluar:
-            nuevo_tablero, lineas = simular_placement(matriz, pieza, rot_idx, col)
-            if nuevo_tablero is None:
-                continue
-            punt = puntuar_tablero(nuevo_tablero, lineas)
-            if punt > mejor_punt:
-                mejor_punt = punt
-                mejor_col = col
-                mejor_rot = rot_idx
-    
-    # Fallback: si no se encontró, evaluar el resto de rotaciones (raro)
-    if mejor_col is None:
-        rotaciones_restantes = [i for i in range(len(rotaciones)) if i not in rotaciones_a_evaluar]
-        for rot_idx in rotaciones_restantes:
-            forma = rotaciones[rot_idx]
-            ancho_p = len(forma[0])
-            for col in range(BOARD_COLS - ancho_p + 1):
-                nuevo_tablero, lineas = simular_placement(matriz, pieza, rot_idx, col)
-                if nuevo_tablero is None:
-                    continue
-                punt = puntuar_tablero(nuevo_tablero, lineas)
-                if punt > mejor_punt:
-                    mejor_punt = punt
-                    mejor_col = col
-                    mejor_rot = rot_idx
-  
-    return mejor_punt, mejor_col, mejor_rot
+
+
+   # Ahì
+if exito:
+                        ultimo_hold_usado = False
+                        # Guardar la captura de la zona spawn después de colocar la pieza
+                        spawn_img_next = capture_screen(spawn_region)
+                        guardar_captura_spawn(spawn_img_next)
+                    else:
+                        contador_fallos += 1
+                    pieza_actual = None
+
+
+    # Colocar la pieza que resultó del hold---Ahì
+                        exito = colocar_pieza_mejorada(
+                            nueva_pieza_hold, nueva_columna_spawn, col_hold_obj, rot_hold_obj,
+                            keyboard, spawn_region, cell_w, nivel, usar_estrategia_rapida
+                        )
+                        if exito:
+                            ultimo_hold_usado = True   # para no repetir hold inmediatamente
+                            lineas_totales += lineas_hold
+                            # Guardar la captura de la zona spawn después de colocar la pieza
+                            guardar_captura_spawn(spawn_img_new)
