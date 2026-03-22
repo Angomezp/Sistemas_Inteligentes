@@ -12,7 +12,7 @@ keyboard = Controller()
 CONFIG_FILE = "tetrio_config.json"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, CONFIG_FILE)
-
+COORDENADAS_PUNTAJE = (308, 447, 363, 420)
 ########################################
 # TOLERANCIA DE COLOR
 ########################################
@@ -916,6 +916,26 @@ def calcular_nivel(lineas):
                 meta += 2
             return nivel
 
+def get_tiempos_hold(nivel, usar_rapida):
+    if nivel <= 5:
+        factor = 1.0
+    elif nivel == 6:
+        factor = 0.9
+    elif nivel == 7:
+        factor = 0.8
+    else:
+        factor = 0.7
+    if usar_rapida:
+        factor *= 0.9
+    return {
+        'hold_press': max(0.04 * factor, 0.015),
+        'hold_release_delay': max(0.12 * factor, 0.05)
+    }
+
+def guardar_screenshot_pantalla(nombre= "azucar_morena_bot.png"):
+    screen = capture_screen(COORDENADAS_PUNTAJE)
+    cv2.imwrite(BASE_DIR + nombre, screen)
+
 def puntuar_tablero(matriz, lineas_eliminadas=0):
     """
     Evalúa la bondad del tablero. Mayor puntuación es mejor.
@@ -1006,10 +1026,8 @@ def mejor_placement_rapido(matriz, pieza, nivel=7):
     alturas_actuales = alturas_columna(matriz)
     
     # Determinar cuántas rotaciones evaluar según nivel
-    if nivel >= 10:
+    if nivel >= 8:
         num_rot = 1
-    elif nivel >= 8:
-        num_rot = 2
     else:
         num_rot = 3
     
@@ -1101,11 +1119,11 @@ def colocar_pieza_mejorada(pieza, columna_spawn_inicial, columna_objetivo, rotac
         factor = 0.9
         factor_reintento = 0.9
     elif nivel == 7:
-        factor = 0.8
-        factor_reintento = 0.8
+        factor = 0.77
+        factor_reintento = 0.77
     else:
-        factor = 0.8 # niveles muy altos
-        factor_reintento = 0.8
+        factor = 0.4
+        factor_reintento = 0.4
 
     #Calcular tiempos reales con mínimo
     t_puls = max(tiempos_base['pulsacion'] * factor, 0.002)
@@ -1198,13 +1216,13 @@ def ejecutar_bot():
     print("Niveles 7+: Estrategia rápida")
     print("Presiona Ctrl+C para detener")
 
-    # Variables de estado
+     # Variables de estado
     pieza_actual = None
     pieza_en_hold = None
     ultimo_hold_usado = False
     contador_fallos = 0
     lineas_totales = 0
-    nivel = 1  
+    nivel = 1
 
     try:
         while True:
@@ -1240,55 +1258,129 @@ def ejecutar_bot():
             # Ordenar piezas siguientes por posición Y (más próximas primero)
             if piezas_siguientes:
                 piezas_siguientes.sort(key=lambda p: p[1])
+                alturas = alturas_columna(matriz_tablero)
+                max_altura = max(alturas) if alturas else 0
+                if max_altura == BOARD_ROWS:
+                    guardar_screenshot_pantalla()
 
             # Si hay pieza en spawn y no hay pieza actual, es nueva pieza
             if piezas_spawn and pieza_actual is None:
                 pieza_actual = piezas_spawn[0][4]
-                
-                # Determinar si usamos estrategia rápida según el nivel
+
+                # Determinar nivel y estrategia
                 nivel = calcular_nivel(lineas_totales)
                 usar_estrategia_rapida = nivel >= 7
 
                 # Calcular columna actual de la pieza en spawn
                 x_spawn = piezas_spawn[0][0]
                 columna_spawn = int(round(x_spawn / cell_w))
-                columna_spawn = max(0, min(columna_spawn, BOARD_COLS-1))
+                columna_spawn = max(0, min(columna_spawn, BOARD_COLS - 1))
 
-                # Obtener próximas piezas (opcional, para información)
+                # Obtener próximas piezas (hasta 3)
                 proximas_piezas = [p[4] for p in piezas_siguientes[:3]] if piezas_siguientes else []
 
-                # Evaluar la mejor jugada para la pieza actual
+                # --- Evaluación estratégica ---
+                # 1. Puntuación de colocar la pieza actual
                 if usar_estrategia_rapida:
-                    punt, col_objetivo, rot_objetivo = mejor_placement_rapido(matriz_tablero, pieza_actual, nivel)
+                    punt_actual, col_obj, rot_obj = mejor_placement_rapido(matriz_tablero, pieza_actual, nivel)
                 else:
-                    punt, col_objetivo, rot_objetivo = mejor_placement(matriz_tablero, pieza_actual)
-  
-                # Opción de hold (simplificada, solo si la actual no se puede colocar)
-                puede_colocar = col_objetivo is not None
+                    punt_actual, col_obj, rot_obj = mejor_placement(matriz_tablero, pieza_actual)
+                puede_colocar_actual = col_obj is not None
 
-                if puede_colocar:
-                    # Colocar la pieza
-                    _, lineas_eliminadas = simular_placement(matriz_tablero, pieza_actual, rot_objetivo, col_objetivo)
-                    lineas_totales += lineas_eliminadas
-                    exito = colocar_pieza_mejorada(pieza_actual, columna_spawn, col_objetivo, rot_objetivo,
-                                                    keyboard, spawn_region, cell_w, nivel, usar_estrategia_rapida)
+                # 2. Puntuación de usar hold (si es posible)
+                punt_hold = float('-inf')
+                hold_accion = None   # 'guardar' o 'swap'
+                nueva_pieza_hold = None
+                col_hold_obj = None
+                rot_hold_obj = None
+                lineas_hold = 0
+
+                if not ultimo_hold_usado:
+                    if pieza_en_hold is None:
+                        # Hold vacío: guardar actual y usar la primera siguiente
+                        if proximas_piezas:
+                            nueva_pieza = proximas_piezas[0]
+                            if usar_estrategia_rapida:
+                                punt_tmp, col_tmp, rot_tmp = mejor_placement_rapido(matriz_tablero, nueva_pieza, nivel)
+                            else:
+                                punt_tmp, col_tmp, rot_tmp = mejor_placement(matriz_tablero, nueva_pieza)
+                            if col_tmp is not None:
+                                nuevo_tablero, lineas = simular_placement(matriz_tablero, nueva_pieza, rot_tmp, col_tmp)
+                                punt_hold = puntuar_tablero(nuevo_tablero, lineas)
+                                hold_accion = 'guardar'
+                                nueva_pieza_hold = nueva_pieza
+                                col_hold_obj = col_tmp
+                                rot_hold_obj = rot_tmp
+                                lineas_hold = lineas
+                    else:
+                        # Hay pieza en hold: intercambiar
+                        nueva_pieza = pieza_en_hold
+                        if usar_estrategia_rapida:
+                            punt_tmp, col_tmp, rot_tmp = mejor_placement_rapido(matriz_tablero, nueva_pieza, nivel)
+                        else:
+                            punt_tmp, col_tmp, rot_tmp = mejor_placement(matriz_tablero, nueva_pieza)
+                        if col_tmp is not None:
+                            nuevo_tablero, lineas = simular_placement(matriz_tablero, nueva_pieza, rot_tmp, col_tmp)
+                            punt_hold = puntuar_tablero(nuevo_tablero, lineas)
+                            hold_accion = 'swap'
+                            nueva_pieza_hold = nueva_pieza
+                            col_hold_obj = col_tmp
+                            rot_hold_obj = rot_tmp
+                            lineas_hold = lineas
+
+                # --- Decisión final ---
+                if puede_colocar_actual and punt_actual >= punt_hold:
+                    # Colocar la pieza actual
+                    _, lineas_elim = simular_placement(matriz_tablero, pieza_actual, rot_obj, col_obj)
+                    lineas_totales += lineas_elim
+                    exito = colocar_pieza_mejorada(
+                        pieza_actual, columna_spawn, col_obj, rot_obj,
+                        keyboard, spawn_region, cell_w, nivel, usar_estrategia_rapida
+                    )
                     if exito:
-                        ultimo_hold_usado = False
+                        ultimo_hold_usado = False                     
                     else:
-                        contador_fallos += 1
+                        contador_fallos += 1       
                     pieza_actual = None
-                else:
-                    # Intentar hold si es posible
-                    if not ultimo_hold_usado:
-                        keyboard.press(Key.shift)
-                        time.sleep(0.05 if not usar_estrategia_rapida else 0.03)
-                        keyboard.release(Key.shift)
-                        ultimo_hold_usado = True
-                        pieza_actual = None
-                        time.sleep(0.3 if not usar_estrategia_rapida else 0.15)
+
+                elif hold_accion is not None:
+                    # Ejecutar hold
+                    tiempos = get_tiempos_hold(nivel, usar_estrategia_rapida)
+                    keyboard.press(Key.shift)
+                    time.sleep(tiempos['hold_press'])
+                    keyboard.release(Key.shift)
+                    time.sleep(tiempos['hold_release_delay'])
+
+                    # Esperar un poco a que la pieza aparezca en spawn
+                    time.sleep(0.03 if usar_estrategia_rapida else 0.05)
+
+                    # Capturar la nueva pieza en spawn
+                    spawn_img_new = capture_screen(spawn_region)
+                    piezas_spawn_new = detectar_piezas_spawn(spawn_img_new)
+                    if piezas_spawn_new:
+                        nueva_x_spawn = piezas_spawn_new[0][0]
+                        nueva_columna_spawn = int(round(nueva_x_spawn / cell_w))
+                        nueva_columna_spawn = max(0, min(nueva_columna_spawn, BOARD_COLS - 1))
+                        # Colocar la pieza que resultó del hold
+                        exito = colocar_pieza_mejorada(
+                            nueva_pieza_hold, nueva_columna_spawn, col_hold_obj, rot_hold_obj,
+                            keyboard, spawn_region, cell_w, nivel, usar_estrategia_rapida
+                        )
+                        if exito:
+                            ultimo_hold_usado = True   # para no repetir hold inmediatamente
+                            lineas_totales += lineas_hold
+                        else:
+                            contador_fallos += 1
+
                     else:
-                        # No se puede hacer nada, esperar
-                        pieza_actual = None
+                        # Si falla la detección, reintentar en la siguiente iteración
+                        pieza_actual = nueva_pieza_hold
+                    # Ya sea que se colocó o se guardó para reintentar, limpiamos la pieza actual
+                    pieza_actual = None
+
+                else:
+                    # No hay jugada posible, esperar
+                    pieza_actual = None
 
             # Pequeña pausa entre iteraciones
             time.sleep(0.05 if nivel < 7 else 0.02)
@@ -1299,7 +1391,6 @@ def ejecutar_bot():
         print(f"Error en el bot: {e}")
         import traceback
         traceback.print_exc()
-
 
 ########################################
 # MENÚ
