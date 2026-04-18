@@ -1,0 +1,453 @@
+/*
+ * AzucarMorena PRO
+ * Mejorado:
+ * - Medio juego MUCHO más fuerte
+ * - Minimax más robusto sin ser costoso
+ * - Beam Search inteligente
+ * - Mejor evaluación táctica
+ * - Priorización de cadenas largas
+ */
+
+class AzucarMorena extends Agent {
+
+    constructor() {
+        super();
+
+        this.boardOps = new Board();
+
+        this.size = 0;
+        this.color = "R";
+        this.opponentColor = "Y";
+
+        this.totalMoves = 0;
+        this.movesDone = 0;
+
+        this.randomPhaseLimit = 0;
+        this.minimaxPhaseStart = 0;
+
+        this.turnCounter = 0;
+    }
+
+    init(color, board, time) {
+        super.init(color, board, time);
+
+        this.color = color;
+        this.opponentColor = (color === "R") ? "Y" : "R";
+
+        this.size = board.length;
+
+        this.totalMoves = 2 * this.size * (this.size + 1);
+
+        this.randomPhaseLimit = Math.floor(this.totalMoves * 0.04);
+        this.minimaxPhaseStart = Math.floor(this.totalMoves * 0.72);
+
+        this.turnCounter = 0;
+        this.movesDone = 0;
+    }
+
+    compute(board, timeRemaining) {
+
+        let moves = this.boardOps.valid_moves(board);
+
+        if (!moves || moves.length === 0) return [0,0,0];
+
+        this.turnCounter++;
+        this.movesDone = this.totalMoves - moves.length;
+
+        // Apertura
+        if (this.movesDone < this.randomPhaseLimit) {
+            return moves[Math.floor(Math.random()*moves.length)];
+        }
+
+        // Final
+        if (this.movesDone >= this.minimaxPhaseStart) {
+            return this.minimaxMove(board, moves, timeRemaining);
+        }
+
+        // Medio juego mejorado
+        let win = this.findImmediateWin(board, moves);
+        if (win) return win;
+
+        return this.findBestMidMove(board, moves);
+    }
+
+    // =====================================================
+    // UTILIDADES
+    // =====================================================
+
+    countLines(cell) {
+        return ((cell&1)?1:0)+
+               ((cell&2)?1:0)+
+               ((cell&4)?1:0)+
+               ((cell&8)?1:0);
+    }
+
+    countPlayerSquares(board, color) {
+        let target = color === "R" ? -1 : -2;
+        let total = 0;
+
+        for (let i=0;i<this.size;i++) {
+            for (let j=0;j<this.size;j++) {
+                if (board[i][j] === target) total++;
+            }
+        }
+
+        return total;
+    }
+
+    applyMove(board, move, color) {
+        let [r,c,s] = move;
+        let mark = color === "R" ? -1 : -2;
+        this.boardOps.move(board, r, c, s, mark);
+    }
+
+    applyMoveAndGetSquares(board, move, color) {
+        let before = this.countPlayerSquares(board, color);
+        this.applyMove(board, move, color);
+        let after = this.countPlayerSquares(board, color);
+        return after - before;
+    }
+
+    // =====================================================
+    // GANAR AHORA
+    // =====================================================
+
+    findImmediateWin(board, moves) {
+        for (let move of moves) {
+            if (this.countSquaresCompleted(board, move) > 0) return move;
+        }
+        return null;
+    }
+
+    countSquaresCompleted(board, move) {
+        let temp = this.boardOps.clone(board);
+
+        let before = this.countPlayerSquares(temp, this.color);
+
+        this.applyMove(temp, move, this.color);
+
+        let after = this.countPlayerSquares(temp, this.color);
+
+        return after - before;
+    }
+
+    // =====================================================
+    // MEDIO JUEGO FUERTE
+    // =====================================================
+
+    findBestMidMove(board, moves) {
+
+        let bestMove = moves[0];
+        let bestScore = -Infinity;
+
+        for (let move of moves) {
+
+            let score = this.evaluateMidMove(board, move);
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+
+        return bestMove;
+    }
+
+    evaluateMidMove(board, move) {
+
+        let [r,c] = move;
+
+        let score = 0;
+
+        // Cerrar cuadro siempre bueno
+        score += this.countSquaresCompleted(board, move) * 1000;
+
+        // Evitar regalar cajas
+        if (this.createsThirdLine(board, move)) score -= 350;
+
+        // Crear celdas de 2 líneas es bueno
+        score += this.createsSecondLine(board, move) * 70;
+
+        // Conectar regiones
+        score += this.chainPotential(board, r, c) * 45;
+
+        // Bordes tempranos buenos
+        if (
+            r === 0 || c === 0 ||
+            r === this.size-1 || c === this.size-1
+        ) score += 18;
+
+        // Esquinas mejores
+        if (
+            (r===0 || r===this.size-1) &&
+            (c===0 || c===this.size-1)
+        ) score += 25;
+
+        // Centro útil en tableros grandes
+        let center = (this.size - 1)/2;
+        let dist = Math.abs(r-center)+Math.abs(c-center);
+        score += (this.size - dist) * 2;
+
+        return score;
+    }
+
+    createsSecondLine(board, move) {
+        let [r,c,s] = move;
+
+        let cell = board[r][c];
+        let newCell = cell | (1<<s);
+
+        if (cell >= 0 &&
+            this.countLines(cell) === 1 &&
+            this.countLines(newCell) === 2) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    chainPotential(board, row, col) {
+
+        let total = 0;
+
+        let dirs = [
+            [1,0],[-1,0],[0,1],[0,-1]
+        ];
+
+        for (let d of dirs) {
+            let nr = row + d[0];
+            let nc = col + d[1];
+
+            if (
+                nr>=0 && nc>=0 &&
+                nr<this.size && nc<this.size
+            ) {
+                let cell = board[nr][nc];
+
+                if (cell >= 0) {
+                    let lines = this.countLines(cell);
+
+                    if (lines === 2) total += 2;
+                    if (lines === 1) total += 1;
+                }
+            }
+        }
+
+        return total;
+    }
+
+    // =====================================================
+    // MINIMAX ROBUSTO
+    // =====================================================
+
+    minimaxMove(board, moves, timeRemaining) {
+
+        let ordered = this.orderMoves(board, moves);
+
+        let bestMove = ordered[0];
+        let bestVal = -Infinity;
+
+        let depth = 3;
+
+        if (ordered.length <= 10) depth = 4;
+        if (ordered.length <= 6) depth = 5;
+
+        let width = Math.min(8, ordered.length);
+
+        for (let i=0;i<width;i++) {
+
+            let move = ordered[i];
+
+            let temp = this.boardOps.clone(board);
+
+            let gain = this.applyMoveAndGetSquares(
+                temp,
+                move,
+                this.color
+            );
+
+            let val;
+
+            if (gain > 0) {
+                val = gain + this.minimaxLite(
+                    temp, depth-1,
+                    -Infinity, Infinity,
+                    true
+                );
+            } else {
+                val = this.minimaxLite(
+                    temp, depth-1,
+                    -Infinity, Infinity,
+                    false
+                );
+            }
+
+            if (val > bestVal) {
+                bestVal = val;
+                bestMove = move;
+            }
+        }
+
+        return bestMove;
+    }
+
+    minimaxLite(board, depth, alpha, beta, maximizing) {
+
+        let moves = this.boardOps.valid_moves(board);
+
+        if (depth === 0 || moves.length === 0) {
+            return this.fastEvaluate(board);
+        }
+
+        moves = this.orderMoves(board, moves);
+
+        let width = Math.min(6, moves.length);
+
+        let color = maximizing ? this.color : this.opponentColor;
+
+        if (maximizing) {
+
+            let best = -Infinity;
+
+            for (let i=0;i<width;i++) {
+
+                let temp = this.boardOps.clone(board);
+
+                let gain = this.applyMoveAndGetSquares(
+                    temp,
+                    moves[i],
+                    color
+                );
+
+                let val;
+
+                if (gain > 0) {
+                    val = gain + this.minimaxLite(
+                        temp, depth-1,
+                        alpha, beta,
+                        true
+                    );
+                } else {
+                    val = this.minimaxLite(
+                        temp, depth-1,
+                        alpha, beta,
+                        false
+                    );
+                }
+
+                if (val > best) best = val;
+                if (best > alpha) alpha = best;
+                if (beta <= alpha) break;
+            }
+
+            return best;
+
+        } else {
+
+            let best = Infinity;
+
+            for (let i=0;i<width;i++) {
+
+                let temp = this.boardOps.clone(board);
+
+                let gain = this.applyMoveAndGetSquares(
+                    temp,
+                    moves[i],
+                    color
+                );
+
+                let val;
+
+                if (gain > 0) {
+                    val = -gain + this.minimaxLite(
+                        temp, depth-1,
+                        alpha, beta,
+                        false
+                    );
+                } else {
+                    val = this.minimaxLite(
+                        temp, depth-1,
+                        alpha, beta,
+                        true
+                    );
+                }
+
+                if (val < best) best = val;
+                if (best < beta) beta = best;
+                if (beta <= alpha) break;
+            }
+
+            return best;
+        }
+    }
+
+    // =====================================================
+    // ORDENAMIENTO
+    // =====================================================
+
+    orderMoves(board, moves) {
+
+        let scored = [];
+
+        for (let move of moves) {
+
+            let score = this.evaluateMidMove(board, move);
+
+            scored.push({
+                move: move,
+                score: score
+            });
+        }
+
+        scored.sort((a,b)=>b.score-a.score);
+
+        return scored.map(x=>x.move);
+    }
+
+    // =====================================================
+    // EVALUACIÓN FINAL
+    // =====================================================
+
+    fastEvaluate(board) {
+
+        let my = this.countPlayerSquares(board, this.color);
+        let opp = this.countPlayerSquares(board, this.opponentColor);
+
+        let value = (my - opp) * 120;
+
+        for (let i=0;i<this.size;i++) {
+            for (let j=0;j<this.size;j++) {
+
+                let cell = board[i][j];
+
+                if (cell >= 0) {
+
+                    let lines = this.countLines(cell);
+
+                    if (lines === 3) value -= 8;
+                    if (lines === 2) value += 2;
+                }
+            }
+        }
+
+        return value;
+    }
+
+    // =====================================================
+    // RIESGO
+    // =====================================================
+
+    createsThirdLine(board, move) {
+
+        let [r,c,s] = move;
+
+        let cell = board[r][c];
+
+        let next = cell | (1<<s);
+
+        return (
+            this.countLines(cell) === 2 &&
+            this.countLines(next) === 3
+        );
+    }
+}
