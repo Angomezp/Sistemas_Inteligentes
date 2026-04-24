@@ -1,4 +1,4 @@
-/*
+/*TODO< Cambiar para que los par[ametros dependan de tiempo y tama;o del tablero, no solo del tablero]
  * AzucarMorena ADAPTIVE SAFE FULL++
  *
  * Cambios pedidos:
