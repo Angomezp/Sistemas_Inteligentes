@@ -161,3 +161,12 @@ sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
 plt.title("Random Forest")
 plt.savefig(os.path.join(BASE_DIR, "rf_confusion.png"))
 plt.show()
+
+pd.DataFrame([res_rf]).to_csv(
+    os.path.join(BASE_DIR, "rf_metrics.csv"),
+    index=False
+)
+pd.DataFrame(cm).to_csv(
+    os.path.join(BASE_DIR, "rf_confusion.csv"),
+    index=False
+)

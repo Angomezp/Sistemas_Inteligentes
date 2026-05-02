@@ -158,3 +158,13 @@ sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
 plt.title("KNN")
 plt.savefig(os.path.join(BASE_DIR, "knn_confusion.png"))
 plt.show()
+
+pd.DataFrame([res_knn]).to_csv(
+    os.path.join(BASE_DIR, "knn_metrics.csv"),
+    index=False
+)
+pd.DataFrame(cm).to_csv(
+    os.path.join(BASE_DIR, "knn_confusion.csv"),
+    index=False
+)
+
