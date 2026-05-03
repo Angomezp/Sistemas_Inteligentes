@@ -42,7 +42,7 @@ class AzucarMorenaV2 extends Agent {
         let movesLeft = moves.length;
 
         // =====================================================
-        // 🎯 CONFIG DINÁMICA POR TAMAÑO + TIEMPO
+        // CONFIG DINÁMICA POR TAMAÑO + TIEMPO
         // =====================================================
 
         let openingPercent;
@@ -51,7 +51,7 @@ class AzucarMorenaV2 extends Agent {
         let BASE_DEPTH;
         let END_DEPTH;
 
-        // 🔵 TABLEROS PEQUEÑOS
+        // TABLEROS PEQUEÑOS
         if (this.size <= 10) {
             openingPercent = 0.01;        // casi nada random
             minimaxStartPercent = 0.40;   // minimax temprano
@@ -59,28 +59,28 @@ class AzucarMorenaV2 extends Agent {
             BASE_DEPTH = 6;
             END_DEPTH = 8;
 
-            // 🔥 si hay buen tiempo → aún menos random
+            
             if (timeRemaining > 8) {
-                openingPercent *= 0.5;
+                openingPercent *= 0.15;
                 minimaxStartPercent -= 0.05;
             }
         }
 
-        // 🟡 TABLEROS MEDIOS
+        // TABLEROS MEDIOS
         else if (this.size <= 20) {
             openingPercent = 0.03;
-            minimaxStartPercent = 0.55;
+            minimaxStartPercent = 0.6;
 
             BASE_DEPTH = 5;
             END_DEPTH = 7;
 
             if (timeRemaining > 10) {
-                openingPercent *= 0.7;
-                minimaxStartPercent -= 0.05;
+                openingPercent *= 0.2;
+                minimaxStartPercent -= 0.01;
             }
         }
 
-        // 🔴 TABLEROS GRANDES
+        // TABLEROS GRANDES
         else {
             openingPercent = 0.05;
             minimaxStartPercent = 0.70;
@@ -89,7 +89,7 @@ class AzucarMorenaV2 extends Agent {
             END_DEPTH = 6;
         }
 
-        // 🔥 AJUSTE FINAL POR TIEMPO BAJO
+        // AJUSTE FINAL POR TIEMPO BAJO
         if (timeRemaining < 3) {
             openingPercent += 0.02;
             minimaxStartPercent += 0.05;

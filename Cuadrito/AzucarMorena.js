@@ -1,35 +1,50 @@
-/*
- * AzucarMorena ULTRA ADAPTIVE FINAL
- *
- * ✔ Optimizado por tamaño de tablero
- * ✔ Control dinámico por tiempo
- * ✔ Minimax adaptativo (profundidad + anchura)
- * ✔ Estrategia intermedia fuerte pero ligera
- * ✔ Validación segura
- */
-
 class AzucarMorena extends Agent {
 
     constructor() {
+
         super();
+
         this.boardOps = new Board();
 
         this.size = 0;
+
         this.color = "R";
         this.opponentColor = "Y";
 
         this.totalMoves = 0;
         this.movesDone = 0;
+
+        this.initialTime = 0;
+
+        this.startTime = 0;
+        this.timeLimit = 0;
+
+        this.FAST_MODE = false;
+        this.ULTRA_FAST = false;
+        this.BLITZ_20 = false;
+
+        this.openingPercent = 0.05;
+        this.minimaxStartPercent = 0.75;
+
+        this.baseDepth = 3;
+        this.endDepth = 5;
     }
 
     init(color, board, time) {
+
         super.init(color, board, time);
 
         this.color = color;
-        this.opponentColor = (color === "R") ? "Y" : "R";
+
+        this.opponentColor =
+            color === "R" ? "Y" : "R";
 
         this.size = board.length;
-        this.totalMoves = 2 * this.size * (this.size + 1);
+
+        this.totalMoves =
+            2 * this.size * (this.size + 1);
+
+        this.initialTime = time;
     }
 
     // =====================================================
@@ -38,410 +53,914 @@ class AzucarMorena extends Agent {
 
     compute(board, timeRemaining) {
 
-        if (!board || board.length === 0) return [0,0,0];
+        if (!board || board.length === 0)
+            return [0,0,0];
+
+        this.startTime = Date.now();
+
+        // MÁS CONSERVADOR
+        this.timeLimit =
+            Math.min(
+                timeRemaining * 0.72,
+                3.8
+            );
 
         this.size = board.length;
 
-        let moves = this.boardOps.valid_moves(board);
-        if (!moves || moves.length === 0) return [0,0,0];
+        let moves =
+            this.boardOps.valid_moves(board);
 
-        this.movesDone = this.totalMoves - moves.length;
+        if (!moves || moves.length === 0)
+            return [0,0,0];
 
-        // =====================================================
-        // CONFIG POR TAMAÑO
-        // =====================================================
+        this.movesDone =
+            this.totalMoves - moves.length;
 
-        let OPENING_PERCENT, MINIMAX_START, BASE_DEPTH, END_DEPTH, EXTRA_MID = false;
-
-        if (this.size <= 10) {
-            OPENING_PERCENT = 0.02;
-            MINIMAX_START = 0.45;
-            BASE_DEPTH = 6;
-            END_DEPTH = 8;
-        }
-        else if (this.size <= 15) {
-            OPENING_PERCENT = 0.02;
-            MINIMAX_START = 0.50;
-            BASE_DEPTH = 5;
-            END_DEPTH = 7;
-        }
-        else if (this.size <= 20) {
-            OPENING_PERCENT = 0.03;
-            MINIMAX_START = 0.60;
-            BASE_DEPTH = 4;
-            END_DEPTH = 6;
-        }
-        else if (this.size <= 28) {
-            OPENING_PERCENT = 0.04;
-            MINIMAX_START = 0.65;
-            BASE_DEPTH = 4;
-            END_DEPTH = 5;
-        }
-        else {
-            OPENING_PERCENT = 0.05;
-            MINIMAX_START = 0.75;
-            BASE_DEPTH = 3;
-            END_DEPTH = 4;
-            EXTRA_MID = true;
-        }
-
-        let randomLimit = Math.floor(this.totalMoves * OPENING_PERCENT);
-        let minimaxStart = Math.floor(this.totalMoves * MINIMAX_START);
+        this.configureStrategy(
+            timeRemaining,
+            moves.length
+        );
 
         let selected = null;
 
+        let randomLimit =
+            Math.floor(
+                this.totalMoves *
+                this.openingPercent
+            );
+
+        let minimaxStart =
+            Math.floor(
+                this.totalMoves *
+                this.minimaxStartPercent
+            );
+
         // =====================================================
-        // FASES
+        // OPENING
         // =====================================================
 
         if (this.movesDone < randomLimit) {
-            selected = moves[Math.floor(Math.random() * moves.length)];
+
+            selected =
+                this.safeRandomMove(
+                    board,
+                    moves
+                );
         }
 
-        else if (this.movesDone >= minimaxStart) {
+        // =====================================================
+        // MIDGAME
+        // =====================================================
 
-            let dynamic = this.getDynamicDepth(
-                timeRemaining,
-                BASE_DEPTH,
-                END_DEPTH,
-                moves.length
-            );
+        else if (
+            this.movesDone < minimaxStart
+        ) {
 
-            selected = this.minimaxMove(
-                board,
-                moves,
-                dynamic.base,
-                dynamic.end,
-                timeRemaining
-            );
+            let forced =
+                this.findImmediateWin(
+                    board,
+                    moves
+                );
+
+            if (forced)
+                selected = forced;
+
+            else
+                selected =
+                    this.findBestMidMove(
+                        board,
+                        moves
+                    );
         }
+
+        // =====================================================
+        // MINIMAX
+        // =====================================================
 
         else {
-            let win = this.findImmediateWin(board, moves);
-            if (win) selected = win;
-            else selected = this.findBestMidMove(board, moves, EXTRA_MID);
+
+            let dynamic =
+                this.getDynamicDepth(
+                    moves.length
+                );
+
+            selected =
+                this.minimaxMove(
+                    board,
+                    moves,
+                    dynamic.base,
+                    dynamic.end
+                );
         }
 
-        if (this.isMoveValid(board, selected)) return selected;
-
-        for (let m of moves)
-            if (this.isMoveValid(board, m)) return m;
+        if (
+            selected &&
+            this.isMoveValid(board, selected)
+        )
+            return selected;
 
         return moves[0];
     }
 
     // =====================================================
-    // DINÁMICA TIEMPO
+    // CONFIG
     // =====================================================
 
-    getDynamicDepth(time, base, end, movesLeft) {
+    configureStrategy(
+        timeRemaining,
+        movesLeft
+    ) {
 
-        if (time > 20) {
-            base += 2; end += 2;
-        }
-        else if (time > 10) {
-            base += 1; end += 1;
-        }
-        else if (time < 5) {
-            base -= 1; end -= 1;
-        }
-        else if (time < 2) {
-            base -= 2; end -= 2;
-        }
+        this.FAST_MODE = false;
+        this.ULTRA_FAST = false;
+        this.BLITZ_20 = false;
 
-        if (movesLeft < 12) {
-            base += 1;
-            end += 2;
-        }
+        // =====================================
+        // 10x10
+        // =====================================
 
-        return {
-            base: Math.max(2, base),
-            end: Math.max(3, end)
-        };
-    }
+        if (this.size <= 10) {
 
-    getDynamicWidth(time) {
-        if (time > 15) return 5;
-        if (time > 8) return 4;
-        if (time > 3) return 3;
-        return 2;
-    }
+            this.openingPercent = 0.01;
+            this.minimaxStartPercent = 0.48;
+            this.baseDepth = 5;
+            this.endDepth = 7;
 
-    // =====================================================
-    // VALIDACIÓN
-    // =====================================================
+            if (this.initialTime <= 5) {
 
-    isMoveValid(board, move) {
-        if (!move || move.length !== 3) return false;
+                this.baseDepth = 6;
+                this.endDepth = 10;
 
-        let [r,c,s] = move;
-
-        if (r<0||c<0||r>=this.size||c>=this.size||s<0||s>3)
-            return false;
-
-        try {
-            return this.boardOps.check(board, r, c, s);
-        } catch(e) {
-            return false;
-        }
-    }
-
-    // =====================================================
-    // UTILIDADES
-    // =====================================================
-
-    countLines(cell){
-        return ((cell&1)?1:0)+((cell&2)?1:0)+((cell&4)?1:0)+((cell&8)?1:0);
-    }
-
-    countPlayerSquares(board, color){
-        let target = color==="R"?-1:-2, total=0;
-        for(let i=0;i<this.size;i++)
-            for(let j=0;j<this.size;j++)
-                if(board[i][j]===target) total++;
-        return total;
-    }
-
-    applyMove(board, move, color){
-        if(!this.isMoveValid(board, move)) return false;
-        let [r,c,s]=move;
-        let mark=color==="R"?-1:-2;
-        return this.boardOps.move(board,r,c,s,mark);
-    }
-
-    applyMoveAndGetSquares(board, move, color){
-        let before=this.countPlayerSquares(board,color);
-        this.applyMove(board,move,color);
-        let after=this.countPlayerSquares(board,color);
-        return after-before;
-    }
-
-    // =====================================================
-    // MIDGAME
-    // =====================================================
-
-    findBestMidMove(board, moves, extra){
-
-        let best=moves[0], bestScore=-Infinity;
-
-        for(let move of moves){
-
-            if(!this.isMoveValid(board,move)) continue;
-
-            let score=this.evaluateMidMove(board,move,extra);
-
-            if(score>bestScore){
-                bestScore=score;
-                best=move;
+                this.minimaxStartPercent = 0.5;
             }
         }
 
-        return best;
+        // =====================================
+        // 15x15
+        // =====================================
+
+        else if (this.size <= 15) {
+
+            this.openingPercent = 0.02;
+
+            this.minimaxStartPercent = 0.60;
+
+            this.baseDepth = 4;
+            this.endDepth = 6;
+        }
+
+        // =====================================
+        // 20x20
+        // =====================================
+
+        else if (this.size <= 20) {
+
+            this.openingPercent = 0.03;
+
+            this.minimaxStartPercent = 0.74;
+
+            this.baseDepth = 3;
+            this.endDepth = 5;
+
+            if (this.initialTime <= 5) {
+
+                this.BLITZ_20 = true;
+
+                this.openingPercent = 0.04;
+
+                this.minimaxStartPercent = 0.80;
+
+                // MÁS LIGERO
+                this.baseDepth = 2;
+                this.endDepth = 4;
+            }
+        }
+
+        // =====================================
+        // GRANDES
+        // =====================================
+
+        else {
+
+            this.FAST_MODE = true;
+
+            this.openingPercent = 0.05;
+
+            this.minimaxStartPercent = 0.82;
+
+            this.baseDepth = 2;
+            this.endDepth = 4;
+        }
+
+        // =====================================
+        // TIEMPO RESTANTE
+        // =====================================
+
+        if (timeRemaining < 4) {
+
+            this.FAST_MODE = true;
+
+            this.baseDepth =
+                Math.max(
+                    2,
+                    this.baseDepth - 1
+                );
+        }
+
+        if (timeRemaining < 2) {
+
+            this.ULTRA_FAST = true;
+
+            this.baseDepth = 2;
+
+            this.endDepth = 3;
+        }
+
+        // =====================================
+        // ENDGAME
+        // =====================================
+
+        if (movesLeft < 14) {
+
+            this.endDepth += 1;
+        }
+
+        if (movesLeft < 8) {
+
+            this.endDepth += 1;
+        }
     }
 
-    evaluateMidMove(board, move, extra){
+    // =====================================================
+    // TIME
+    // =====================================================
 
-        let [r,c]=move;
-        let score=0;
+    outOfTime() {
 
-        score+=this.countSquaresCompleted(board,move)*1300;
+        return (
+            (Date.now() - this.startTime)
+            / 1000
+        ) >= this.timeLimit;
+    }
 
-        if(this.createsThirdLine(board,move)) score-=300;
+    // =====================================================
+    // DEPTH
+    // =====================================================
 
-        score+=this.chainPotential(board,r,c)*35;
-        score+=this.safeZoneBonus(board,r,c)*15;
+    getDynamicDepth(movesLeft) {
 
-        if(extra){
-            score+=this.openAreaBonus(board,r,c)*30;
-            score+=this.centerControl(r,c)*15;
+        let base = this.baseDepth;
+
+        let end = this.endDepth;
+
+        if (movesLeft < 6)
+            end += 1;
+
+        return { base, end };
+    }
+
+    // =====================================================
+    // VALIDATION
+    // =====================================================
+
+    isMoveValid(board, move) {
+
+        if (!move) return false;
+
+        let [r,c,s] = move;
+
+        if (
+            r < 0 ||
+            c < 0 ||
+            r >= this.size ||
+            c >= this.size
+        )
+            return false;
+
+        return this.boardOps.check(
+            board,
+            r,
+            c,
+            s
+        );
+    }
+
+    // =====================================================
+    // UTILS
+    // =====================================================
+
+    countLines(cell) {
+
+        return (
+            ((cell&1)?1:0)+
+            ((cell&2)?1:0)+
+            ((cell&4)?1:0)+
+            ((cell&8)?1:0)
+        );
+    }
+
+    // =====================================================
+    // RANDOM
+    // =====================================================
+
+    safeRandomMove(board, moves) {
+
+        let safe = [];
+
+        for (let move of moves) {
+
+            if (
+                !this.createsThirdLine(
+                    board,
+                    move
+                )
+            ) {
+
+                safe.push(move);
+            }
         }
+
+        if (safe.length === 0)
+            safe = moves;
+
+        return safe[
+            Math.floor(
+                Math.random() * safe.length
+            )
+        ];
+    }
+
+    // =====================================================
+    // FAST SQUARE COUNT
+    // =====================================================
+
+    countSquaresCompleted(board, move) {
+
+        let [r,c,s] = move;
+
+        let completed = 0;
+
+        let cell = board[r][c];
+
+        if (cell >= 0) {
+
+            let next = cell | (1<<s);
+
+            if (
+                this.countLines(next) === 4
+            )
+                completed++;
+        }
+
+        let nr=r,nc=c,os;
+
+        if(s===0){nr=r-1;nc=c;os=2;}
+        else if(s===1){nr=r;nc=c+1;os=3;}
+        else if(s===2){nr=r+1;nc=c;os=0;}
+        else {nr=r;nc=c-1;os=1;}
+
+        if (
+            nr>=0 &&
+            nc>=0 &&
+            nr<this.size &&
+            nc<this.size
+        ) {
+
+            let other = board[nr][nc];
+
+            if (other >= 0) {
+
+                let nextOther =
+                    other | (1<<os);
+
+                if (
+                    this.countLines(nextOther)
+                    === 4
+                )
+                    completed++;
+            }
+        }
+
+        return completed;
+    }
+
+    // =====================================================
+    // APPLY / UNDO
+    // =====================================================
+
+    applyMove(board, move) {
+
+        let [r,c,s] = move;
+
+        let changes = [];
+
+        changes.push([r,c,board[r][c]]);
+
+        board[r][c] |= (1<<s);
+
+        let nr=r,nc=c,os;
+
+        if(s===0){nr=r-1;nc=c;os=2;}
+        else if(s===1){nr=r;nc=c+1;os=3;}
+        else if(s===2){nr=r+1;nc=c;os=0;}
+        else {nr=r;nc=c-1;os=1;}
+
+        if (
+            nr>=0 &&
+            nc>=0 &&
+            nr<this.size &&
+            nc<this.size
+        ) {
+
+            changes.push([
+                nr,
+                nc,
+                board[nr][nc]
+            ]);
+
+            board[nr][nc] |= (1<<os);
+        }
+
+        return changes;
+    }
+
+    undoMove(board, changes) {
+
+        for (let c of changes) {
+
+            board[c[0]][c[1]] = c[2];
+        }
+    }
+
+    // =====================================================
+    // HEURISTIC
+    // =====================================================
+
+    findBestMidMove(board, moves) {
+
+        let ordered =
+            this.orderMoves(board, moves);
+
+        return ordered[0];
+    }
+
+    evaluateMove(board, move) {
+
+        let [r,c] = move;
+
+        let score = 0;
+
+        let gain =
+            this.countSquaresCompleted(
+                board,
+                move
+            );
+
+        score += gain * 4500;
+
+        if (
+            this.createsThirdLine(
+                board,
+                move
+            )
+        ) {
+
+            score -= 900;
+        }
+
+        score +=
+            this.chainPotential(
+                board,
+                r,
+                c
+            ) * 60;
+
+        score +=
+            this.safeZoneBonus(
+                board,
+                r,
+                c
+            ) * 25;
 
         return score;
     }
 
     chainPotential(board,r,c){
-        let total=0;
-        let dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+
+        let total = 0;
+
+        let dirs = [
+            [1,0],
+            [-1,0],
+            [0,1],
+            [0,-1]
+        ];
+
         for(let d of dirs){
-            let nr=r+d[0],nc=c+d[1];
-            if(nr>=0&&nc>=0&&nr<this.size&&nc<this.size){
+
+            let nr=r+d[0];
+            let nc=c+d[1];
+
+            if(
+                nr>=0 &&
+                nc>=0 &&
+                nr<this.size &&
+                nc<this.size
+            ){
+
                 let cell=board[nr][nc];
+
                 if(cell>=0){
+
                     let l=this.countLines(cell);
-                    if(l===2) total+=2;
-                    else if(l===1) total++;
+
+                    if(l===2)
+                        total += 3;
+
+                    else if(l===1)
+                        total += 1;
                 }
             }
         }
+
         return total;
     }
 
     safeZoneBonus(board,r,c){
-        let total=0;
-        let dirs=[[1,0],[-1,0],[0,1],[0,-1]];
-        for(let d of dirs){
-            let nr=r+d[0],nc=c+d[1];
-            if(nr>=0&&nc>=0&&nr<this.size&&nc<this.size){
-                let cell=board[nr][nc];
-                if(cell>=0 && this.countLines(cell)<=1) total++;
+
+        let total = 0;
+
+        for(
+            let i=Math.max(0,r-1);
+            i<=Math.min(this.size-1,r+1);
+            i++
+        ){
+
+            for(
+                let j=Math.max(0,c-1);
+                j<=Math.min(this.size-1,c+1);
+                j++
+            ){
+
+                let cell = board[i][j];
+
+                if(
+                    cell>=0 &&
+                    this.countLines(cell)<=1
+                )
+                    total++;
             }
         }
+
         return total;
     }
 
-    openAreaBonus(board,r,c){
-        let total=0;
-        for(let i=Math.max(0,r-1);i<=Math.min(this.size-1,r+1);i++){
-            for(let j=Math.max(0,c-1);j<=Math.min(this.size-1,c+1);j++){
-                let cell=board[i][j];
-                if(cell>=0 && this.countLines(cell)<=1) total++;
-            }
-        }
-        return total;
+    createsThirdLine(board, move) {
+
+        let [r,c,s] = move;
+
+        let cell = board[r][c];
+
+        let next = cell | (1<<s);
+
+        return (
+            this.countLines(cell) === 2 &&
+            this.countLines(next) === 3
+        );
     }
 
-    centerControl(r,c){
-        let center=(this.size-1)/2;
-        return this.size-(Math.abs(r-center)+Math.abs(c-center));
+    // =====================================================
+    // ORDER
+    // =====================================================
+
+    orderMoves(board, moves) {
+
+        let scored = [];
+
+        let limit = moves.length;
+
+        // MÁS LIGERO 20x20
+
+        if (
+            this.BLITZ_20 &&
+            moves.length > 45
+        ) {
+
+            limit = 22;
+        }
+
+        for(let i=0;i<limit;i++){
+
+            scored.push({
+
+                move: moves[i],
+
+                score:
+                    this.evaluateMove(
+                        board,
+                        moves[i]
+                    )
+            });
+        }
+
+        scored.sort(
+            (a,b)=>b.score-a.score
+        );
+
+        return scored.map(x=>x.move);
     }
 
     // =====================================================
     // MINIMAX
     // =====================================================
 
-    minimaxMove(board, moves, baseDepth, endDepth, timeRemaining){
+    minimaxMove(
+        board,
+        moves,
+        baseDepth,
+        endDepth
+    ) {
 
-        let ordered=this.orderMoves(board,moves);
+        let ordered =
+            this.orderMoves(board, moves);
 
-        let depth=baseDepth;
-        if(ordered.length<=6) depth=endDepth;
+        let depth =
+            ordered.length <= 8
+            ? endDepth
+            : baseDepth;
 
-        let width=this.getDynamicWidth(timeRemaining);
+        let width;
 
-        let bestMove=ordered[0];
-        let bestVal=-Infinity;
+        if (this.ULTRA_FAST)
+            width = 2;
 
-        for(let i=0;i<Math.min(width,ordered.length);i++){
+        else if (this.BLITZ_20)
+            width = 3;
 
-            let move=ordered[i];
-            if(!this.isMoveValid(board,move)) continue;
+        else if (this.FAST_MODE)
+            width = 5;
 
-            let temp=this.boardOps.clone(board);
+        else
+            width = 6;
 
-            let gain=this.applyMoveAndGetSquares(temp,move,this.color);
+        let bestMove = ordered[0];
 
-            let val=
-                gain>0
-                ? gain*90+this.minimaxLite(temp,depth-1,-Infinity,Infinity,true,timeRemaining)
-                : this.minimaxLite(temp,depth-1,-Infinity,Infinity,false,timeRemaining);
+        let bestVal = -Infinity;
 
-            if(val>bestVal){
-                bestVal=val;
-                bestMove=move;
+        for(
+            let i=0;
+            i<Math.min(width,ordered.length);
+            i++
+        ){
+
+            if(this.outOfTime())
+                break;
+
+            let move = ordered[i];
+
+            let gain =
+                this.countSquaresCompleted(
+                    board,
+                    move
+                );
+
+            let changes =
+                this.applyMove(
+                    board,
+                    move
+                );
+
+            let val =
+                gain > 0
+                ? gain * 260 +
+                    this.minimaxLite(
+                        board,
+                        depth-1,
+                        -Infinity,
+                        Infinity,
+                        true
+                    )
+                : this.minimaxLite(
+                        board,
+                        depth-1,
+                        -Infinity,
+                        Infinity,
+                        false
+                    );
+
+            this.undoMove(board, changes);
+
+            if(val > bestVal){
+
+                bestVal = val;
+                bestMove = move;
             }
         }
 
         return bestMove;
     }
 
-    minimaxLite(board, depth, alpha, beta, maximizing, time){
+    minimaxLite(
+        board,
+        depth,
+        alpha,
+        beta,
+        maximizing
+    ) {
 
-        let moves=this.boardOps.valid_moves(board);
-
-        if(depth===0 || moves.length===0)
+        if (
+            depth <= 0 ||
+            this.outOfTime()
+        )
             return this.fastEvaluate(board);
 
-        let width=this.getDynamicWidth(time);
-        let color=maximizing?this.color:this.opponentColor;
+        let moves =
+            this.boardOps.valid_moves(board);
+
+        if (moves.length === 0)
+            return this.fastEvaluate(board);
+
+        let ordered =
+            this.orderMoves(board, moves);
+
+        let width;
+
+        if (this.ULTRA_FAST)
+            width = 1;
+
+        else if (this.BLITZ_20)
+            width = 2;
+
+        else if (moves.length < 8)
+            width = 4;
+
+        else
+            width = 3;
 
         if(maximizing){
 
-            let best=-Infinity;
+            let best = -Infinity;
 
-            for(let i=0;i<Math.min(width,moves.length);i++){
+            for(
+                let i=0;
+                i<Math.min(width,ordered.length);
+                i++
+            ){
 
-                let move=moves[i];
-                if(!this.isMoveValid(board,move)) continue;
+                if(this.outOfTime())
+                    break;
 
-                let temp=this.boardOps.clone(board);
-                let gain=this.applyMoveAndGetSquares(temp,move,color);
+                let move = ordered[i];
 
-                let val=
-                    gain>0
-                    ? gain*70+this.minimaxLite(temp,depth-1,alpha,beta,true,time)
-                    : this.minimaxLite(temp,depth-1,alpha,beta,false,time);
+                let gain =
+                    this.countSquaresCompleted(
+                        board,
+                        move
+                    );
 
-                best=Math.max(best,val);
-                alpha=Math.max(alpha,best);
-                if(beta<=alpha) break;
+                let changes =
+                    this.applyMove(
+                        board,
+                        move
+                    );
+
+                let val =
+                    gain > 0
+                    ? gain * 220 +
+                        this.minimaxLite(
+                            board,
+                            depth-1,
+                            alpha,
+                            beta,
+                            true
+                        )
+                    : this.minimaxLite(
+                            board,
+                            depth-1,
+                            alpha,
+                            beta,
+                            false
+                        );
+
+                this.undoMove(board, changes);
+
+                best = Math.max(best,val);
+
+                alpha = Math.max(alpha,best);
+
+                if(beta <= alpha)
+                    break;
             }
 
             return best;
         }
 
-        let best=Infinity;
+        let best = Infinity;
 
-        for(let i=0;i<Math.min(width,moves.length);i++){
+        for(
+            let i=0;
+            i<Math.min(width,ordered.length);
+            i++
+        ){
 
-            let move=moves[i];
-            if(!this.isMoveValid(board,move)) continue;
+            if(this.outOfTime())
+                break;
 
-            let temp=this.boardOps.clone(board);
-            let gain=this.applyMoveAndGetSquares(temp,move,color);
+            let move = ordered[i];
 
-            let val=
-                gain>0
-                ? -gain*70+this.minimaxLite(temp,depth-1,alpha,beta,false,time)
-                : this.minimaxLite(temp,depth-1,alpha,beta,true,time);
+            let gain =
+                this.countSquaresCompleted(
+                    board,
+                    move
+                );
 
-            best=Math.min(best,val);
-            beta=Math.min(beta,best);
-            if(beta<=alpha) break;
+            let changes =
+                this.applyMove(
+                    board,
+                    move
+                );
+
+            let val =
+                gain > 0
+                ? -gain * 220 +
+                    this.minimaxLite(
+                        board,
+                        depth-1,
+                        alpha,
+                        beta,
+                        false
+                    )
+                : this.minimaxLite(
+                        board,
+                        depth-1,
+                        alpha,
+                        beta,
+                        true
+                    );
+
+            this.undoMove(board, changes);
+
+            best = Math.min(best,val);
+
+            beta = Math.min(beta,best);
+
+            if(beta <= alpha)
+                break;
         }
 
         return best;
     }
 
-    orderMoves(board,moves){
-        return moves.sort((a,b)=>
-            this.evaluateMidMove(board,b,false)-
-            this.evaluateMidMove(board,a,false)
-        );
-    }
+    // =====================================================
+    // FAST EVAL
+    // =====================================================
 
-    fastEvaluate(board){
-        let my=this.countPlayerSquares(board,this.color);
-        let opp=this.countPlayerSquares(board,this.opponentColor);
-        return (my-opp)*140;
-    }
+    fastEvaluate(board) {
 
-    createsThirdLine(board,move){
-        if(!this.isMoveValid(board,move)) return false;
-        let [r,c,s]=move;
-        let cell=board[r][c];
-        let next=cell|(1<<s);
-        return this.countLines(cell)===2 && this.countLines(next)===3;
-    }
+        let my = 0;
+        let opp = 0;
 
-    countSquaresCompleted(board,move){
-        if(!this.isMoveValid(board,move)) return 0;
-        let temp=this.boardOps.clone(board);
-        let before=this.countPlayerSquares(temp,this.color);
-        this.applyMove(temp,move,this.color);
-        let after=this.countPlayerSquares(temp,this.color);
-        return after-before;
-    }
+        for(let i=0;i<this.size;i++){
 
-    findImmediateWin(board,moves){
-        let best=null, bestGain=0;
-        for(let move of moves){
-            if(!this.isMoveValid(board,move)) continue;
-            let gain=this.countSquaresCompleted(board,move);
-            if(gain>bestGain){
-                bestGain=gain;
-                best=move;
+            for(let j=0;j<this.size;j++){
+
+                if(board[i][j] === -1)
+                    my++;
+
+                else if(board[i][j] === -2)
+                    opp++;
             }
         }
+
+        return (my - opp) * 160;
+    }
+
+    // =====================================================
+    // WIN
+    // =====================================================
+
+    findImmediateWin(board, moves) {
+
+        let best = null;
+
+        let bestGain = 0;
+
+        for(let move of moves){
+
+            let gain =
+                this.countSquaresCompleted(
+                    board,
+                    move
+                );
+
+            if(gain > bestGain){
+
+                bestGain = gain;
+
+                best = move;
+            }
+        }
+
         return best;
     }
 }
