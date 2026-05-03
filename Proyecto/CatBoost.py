@@ -152,18 +152,18 @@ cm = confusion_matrix(y_test, y_pred)
 plt.figure()
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
 plt.title("CatBoost")
-plt.savefig(os.path.join(BASE_DIR, "catboost_confusion.png"))
+plt.savefig(os.path.join(BASE_DIR, "CatBoost", "catboost_confusion.png"))
 plt.show()
 
 # =========================================================
 # GUARDAR RESULTADOS
 # =========================================================
 pd.DataFrame([results]).to_csv(
-    os.path.join(BASE_DIR, "catboost_metrics.csv"),
+    os.path.join(BASE_DIR,"CatBoost" ,"catboost_metrics.csv"),
     index=False
 )
 
 pd.DataFrame(cm).to_csv(
-    os.path.join(BASE_DIR, "catboost_confusion.csv"),
+    os.path.join(BASE_DIR, "CatBoost", "catboost_confusion.csv"),
     index=False
 )
