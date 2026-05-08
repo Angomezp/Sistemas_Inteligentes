@@ -18,6 +18,8 @@ class AzucarMorenaV2 extends Agent {
         this.minimaxStartPercent = 0.75;
         this.baseDepth = 3;
         this.endDepth = 5;
+        this.widthRoot = 9;    // anchura para minimaxMove (raíz)
+        this.widthLite = 5;    // anchura para minimaxLite (subnodos)
     }
 
     // =====================================================
@@ -53,7 +55,7 @@ class AzucarMorenaV2 extends Agent {
             return this.realRandom(moves);
         }
         
-        // ESTRATEGIA NORMAL (solo si ninguno tiene ventaja decisiva)
+        // ESTRATEGIA NORMAL
         this.startTime = Date.now();
         this.timeLimit = Math.min(timeRemaining * 0.55, 9.5);
         this.movesDone = this.totalMoves - moves.length;
@@ -89,7 +91,7 @@ class AzucarMorenaV2 extends Agent {
     }
     
     // =====================================================
-    // CONTADOR DE CUADROS PROPIOS Y DE ENEMIGO
+    // CONTADORES
     // =====================================================
     
     countMySquares(board) {
@@ -123,19 +125,26 @@ class AzucarMorenaV2 extends Agent {
         this.ULTRA_FAST = false;
         this.BLITZ_20 = false;
 
+        // Valores por defecto según tamaño (se sobrescribirán después)
+        this.widthRoot = 9;
+        this.widthLite = 5;
+
         // 10x10
         if (this.size <= 10) {
             this.openingPercent = 0.008;
             this.minimaxStartPercent = 0.45;
             this.baseDepth = 6;
             this.endDepth = 9;
-
+            this.widthRoot = 12;      // más ancho en tablero pequeño
+            this.widthLite = 6;
+            
             if (this.initialTime <= 5) {
                 this.openingPercent = 0;
                 this.minimaxStartPercent = 0;
                 this.baseDepth = 10;
                 this.endDepth = 16;
-                return;
+                this.widthRoot = 16;   // muy ancho
+                this.widthLite = 8;
             }
         }
         // 15x15
@@ -144,6 +153,8 @@ class AzucarMorenaV2 extends Agent {
             this.minimaxStartPercent = 0.55;
             this.baseDepth = 5;
             this.endDepth = 8;
+            this.widthRoot = 10;
+            this.widthLite = 5;
         }
         // 20x20
         else if (this.size <= 20) {
@@ -151,13 +162,17 @@ class AzucarMorenaV2 extends Agent {
             this.minimaxStartPercent = 0.38;
             this.baseDepth = 7;
             this.endDepth = 12;
-
+            this.widthRoot = 9;
+            this.widthLite = 5;
+            
             if (this.initialTime <= 5) {
                 this.BLITZ_20 = true;
                 this.openingPercent = 0.15;
                 this.minimaxStartPercent = 0.90;
                 this.baseDepth = 6;
                 this.endDepth = 7;
+                this.widthRoot = 6;    // más estrecho por poco tiempo
+                this.widthLite = 4;
             }
         }
         // GRANDES (30x30, 40x40, etc.)
@@ -167,24 +182,32 @@ class AzucarMorenaV2 extends Agent {
             this.minimaxStartPercent = 0.55;
             this.baseDepth = 7;
             this.endDepth = 10;
-
+            this.widthRoot = 6;
+            this.widthLite = 4;
+            
             if (this.initialTime <= 5) {
                 this.openingPercent = 0.15;
                 this.minimaxStartPercent = 0.9;
                 this.baseDepth = 6;
                 this.endDepth = 7;
+                this.widthRoot = 4;
+                this.widthLite = 3;
             }
         }
 
         // TIEMPO RESTANTE
-        if (timeRemaining < 4) {
+        if (timeRemaining < 3) {
             this.FAST_MODE = true;
             this.baseDepth = Math.max(2, this.baseDepth - 1);
+            this.widthRoot = Math.max(4, this.widthRoot - 1);
+            this.widthLite = Math.max(3, this.widthLite - 1);
         }
-        if (timeRemaining < 2) {
+        if (timeRemaining < 1.5) {
             this.ULTRA_FAST = true;
             this.baseDepth = 2;
             this.endDepth = 3;
+            this.widthRoot = 3;
+            this.widthLite = 2;
         }
 
         // ENDGAME (más profundidad)
@@ -234,7 +257,7 @@ class AzucarMorenaV2 extends Agent {
     }
 
     // =====================================================
-    // RANDOM SEGURO (para apertura)
+    // RANDOM SEGURO
     // =====================================================
     
     safeRandomMove(board, moves) {
@@ -439,18 +462,13 @@ class AzucarMorenaV2 extends Agent {
     }
 
     // =====================================================
-    // MINIMAX
+    // MINIMAX (USANDO widthRoot y widthLite)
     // =====================================================
 
     minimaxMove(board, moves, baseDepth, endDepth) {
         let ordered = this.orderMoves(board, moves);
         let depth = (ordered.length <= 12) ? endDepth : baseDepth;
-        let width;
-
-        if (this.ULTRA_FAST) width = 2;
-        else if (this.BLITZ_20) width = 4;
-        else if (this.FAST_MODE) width = 4;
-        else width = 12;
+        let width = this.widthRoot;   // anchura configurable
 
         let bestMove = ordered[0];
         let bestVal = -Infinity;
@@ -478,11 +496,7 @@ class AzucarMorenaV2 extends Agent {
         if (moves.length === 0) return this.fastEvaluate(board);
 
         let ordered = this.orderMoves(board, moves);
-        let width;
-        if (this.ULTRA_FAST) width = 1;
-        else if (this.BLITZ_20) width = 4;
-        else if (moves.length < 8) width = 6;
-        else width = 5;
+        let width = this.widthLite;   // anchura configurable
 
         if (maximizing) {
             let best = -Infinity;
