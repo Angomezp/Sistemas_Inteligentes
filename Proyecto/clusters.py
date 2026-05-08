@@ -1,20 +1,3 @@
-# ============================================================
-# K-MEANS + AGRUPAMIENTO JERÁRQUICO AGLOMERATIVO
-# ============================================================
-# OBJETIVO:
-# - Cargar cualquier dataset desde una ruta
-# - Detectar automáticamente columnas numéricas
-# - Aplicar:
-#       ✅ K-Means
-#       ✅ Método del Codo
-#       ✅ Dendrograma
-#       ✅ Líneas de corte
-#
-# SOLO DEBES CAMBIAR:
-#       ruta_dataset
-#
-# ============================================================
-
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 
@@ -23,32 +6,20 @@ from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 # ============================================================
 # 1. CARGAR DATASET
 # ============================================================
 
 # CAMBIAR ÚNICAMENTE ESTA RUTA
-ruta_dataset = "ruta/del/dataset.csv"
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "icfes_transformado.csv")
+
 
 # Leer dataset
-df = pd.read_csv(ruta_dataset)
+df = pd.read_csv(DATA_PATH)
 
-# ============================================================
-# 2. MOSTRAR INFORMACIÓN
-# ============================================================
-
-print("================================================")
-print("PRIMERAS FILAS DEL DATASET")
-print("================================================")
-
-print(df.head())
-
-print("\n================================================")
-print("COLUMNAS DEL DATASET")
-print("================================================")
-
-print(df.columns)
 
 # ============================================================
 # 3. SELECCIONAR COLUMNAS NUMÉRICAS AUTOMÁTICAMENTE
@@ -70,18 +41,6 @@ if X.shape[1] == 0:
     raise ValueError(
         "No se encontraron columnas numéricas en el dataset."
     )
-
-print("\n================================================")
-print("COLUMNAS NUMÉRICAS UTILIZADAS")
-print("================================================")
-
-print(X.columns.tolist())
-
-print("\n================================================")
-print("DATOS UTILIZADOS PARA CLUSTERING")
-print("================================================")
-
-print(X.head())
 
 # ============================================================
 # 6. ESCALAMIENTO
