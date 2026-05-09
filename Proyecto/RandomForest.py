@@ -40,12 +40,16 @@ df = df.apply(lambda col: pd.to_numeric(col, errors="ignore"))
 # =========================================================
 def categorizar(x):
     x = float(x)
-    if x <= 33:
+    if x <= 20:
         return 0
-    elif x <= 66:
+    elif x <= 40:
         return 1
-    else:
+    elif x <= 60:
         return 2
+    elif x <= 80:
+        return 3
+    else:
+        return 4
 
 df["target"] = df["PERCENTIL_GLOBAL"].apply(categorizar)
 
