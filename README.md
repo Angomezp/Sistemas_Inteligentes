@@ -1,31 +1,25 @@
 # Sistemas Inteligentes
 
-**Integrantes / Grupo**
+**Grupo:** Azúcar Morena  
+**Integrantes:**
+- [Leidy Yulliana Quiñones Gonzalez](https://github.com/LeidyQG)
+- [Ángel David Gómez Pastrana](https://github.com/Angomezp)
 
-- Grupo: Azucar Morena
-- Integrantes: 
-    - [Leidy Yulliana Quiñones Gonzalez](https://github.com/LeidyQG)
-    - [Angel David Gomez Pastrana](https://github.com/Angomezp)
+**Materia:** Sistemas Inteligentes
 
----
+## Descripción
 
-**Descripción**
-
-Repositorio para proyectos y ejercicios relacionados con la materia Sistemas Inteligentes. Este README  contiene una descripción mínima del contenido actual y marcadores para documentar nuevas carpetas o módulos que se añadan en el futuro.
+Repositorio para proyectos y ejercicios relacionados con la materia Sistemas Inteligentes. Contiene una descripción sucinta del contenido actual.
 
 **Estructura**
 
-```
-.
-├── README.md                
-├── .gitignore
-└── Canibales_Misioneros/ #Bot del juego Canibales y Misioneros
-    ├── bot_AzucarMorena.py  # Script principal 
-    ├── area_config.json      # Archivo de configuración generado por calibración (local)
-    └── sprites/             # Imagenes
-```
+| Carpeta | Descripción |
+|---------|-------------|
+| **Canibales_Misioneros/** | Bot para el puzzle "Misioneros y Caníbales" — captura el juego, detecta personajes y balsa mediante plantillas, automatiza clicks para resolver el puzzle |
+| **Cuadrito/** | Agente inteligente que juega Cuadrito usando búsqueda minimax con optimizaciones |
+| **Tetris/** | Bot para jugar Tetris automáticamente analizando el tablero y calculando movimientos óptimos |
+| **Proyecto/** | Análisis de datos ICFES con clustering (K-means) y clasificadores (KNN, RandomForest, CatBoost) |
 
-- `Canibales_Misioneros/` : Bot para el puzzle "Misioneros y Caníbales" — captura la región del juego, detecta misioneros, caníbales y la balsa mediante plantillas y automatiza clicks para intentar resolver el puzzle.
-
-Nota: el archivo `Canibales_Misioneros/area_config.json` se genera localmente cuando se calibra el área de juego. Por seguridad y por configuración del repositorio puede estar marcado como no versionado (no incluido en git). Si clonas el repositorio por primera vez, ejecuta la opción de calibrado en el script para generar este archivo antes de usar el bot.
+**Notas:**
+- El archivo `Canibales_Misioneros/area_config.json` se genera localmente durante calibración. Si es primera vez, ejecuta la opción de calibrado en el script.
 
