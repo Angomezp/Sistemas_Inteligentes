@@ -8,7 +8,7 @@ import time
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
+from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
 from sklearn.metrics import (
     accuracy_score, f1_score, confusion_matrix,
     roc_auc_score, mean_absolute_error, mean_squared_error
@@ -65,7 +65,7 @@ X = df[features].copy()
 y = df["target"].copy()
 
 # =========================================================
-# IDENTIFICAR TIPOS
+# TIPOS
 # =========================================================
 cat_cols = X.select_dtypes(include=["object", "category"]).columns
 num_cols = X.select_dtypes(include=["int64", "float64"]).columns
@@ -84,57 +84,11 @@ for col in num_cols:
 cat_indices = [X.columns.get_loc(col) for col in cat_cols]
 
 # =========================================================
-# SPLIT
+# SPLIT (solo evaluación)
 # =========================================================
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
-
-# =========================================================
-# 🔥 4 CONJUNTOS DE PARÁMETROS (TUNING)
-# =========================================================
-param_grid = [
-
-    # 🔹 CONJUNTO 1 (rápido / simple)
-    {
-        "iterations": [150],
-        "learning_rate": [0.1],
-        "depth": [4],
-        "l2_leaf_reg": [1],
-        "bootstrap_type": ['Bernoulli'],
-        "subsample": [0.7]
-    },
-
-    # 🔹 CONJUNTO 2 (más profundo)
-    {
-        "iterations": [500],
-        "learning_rate": [0.03],
-        "depth": [8],
-        "l2_leaf_reg": [5],
-        "bootstrap_type": ['Bernoulli'],
-        "subsample": [0.9]
-    },
-
-    # 🔹 CONJUNTO 3 (más regularizado)
-    {
-        "iterations": [600],
-        "learning_rate": [0.01],
-        "depth": [10],
-        "l2_leaf_reg": [9],
-        "bootstrap_type": ['Bernoulli'],
-        "subsample": [0.8]
-    },
-
-    # 🔹 CONJUNTO 4 (TU CONFIGURACIÓN ORIGINAL)
-    {
-        "iterations": [300],
-        "learning_rate": [0.05],
-        "depth": [6],
-        "l2_leaf_reg": [3],
-        "bootstrap_type": ['Bernoulli'],
-        "subsample": [0.8]
-    }
-]
 
 # =========================================================
 # MODELO BASE
@@ -147,25 +101,40 @@ cat_base = CatBoostClassifier(
 )
 
 # =========================================================
-# CROSS VALIDATION (10 FOLDS)
+# 🔥 DISTRIBUCIÓN DE HIPERPARÁMETROS
+# (incluye tu configuración dentro del rango)
 # =========================================================
-cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+param_dist = {
+    "iterations": [150, 300, 500, 700],
+    "learning_rate": [0.01, 0.03, 0.05, 0.1],
+    "depth": [4, 6, 8, 10],
+    "l2_leaf_reg": [1, 3, 5, 9],
+    "bootstrap_type": ['Bernoulli'],
+    "subsample": [0.7, 0.8, 0.9]
+}
 
-grid = GridSearchCV(
+# =========================================================
+# CROSS VALIDATION (3 folds)
+# =========================================================
+cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+
+random_search = RandomizedSearchCV(
     estimator=cat_base,
-    param_grid=param_grid,
+    param_distributions=param_dist,
+    n_iter=6,  # puedes subir a 10-15 si quieres mejor resultado
     cv=cv,
     scoring='f1_weighted',
     n_jobs=-1,
+    random_state=42,
     verbose=1
 )
 
 # =========================================================
-# ENTRENAMIENTO
+# ENTRENAMIENTO (búsqueda)
 # =========================================================
 start = time.time()
 
-grid.fit(
+random_search.fit(
     X_train,
     y_train,
     cat_features=cat_indices
@@ -173,21 +142,26 @@ grid.fit(
 
 end = time.time()
 
-# Mejor modelo
-cat = grid.best_estimator_
-
 print("\nMEJORES PARÁMETROS:\n")
-print(grid.best_params_)
+print(random_search.best_params_)
+
+best_model = random_search.best_estimator_
 
 # =========================================================
-# PREDICCIÓN
+# 🔥 REENTRENAR CON TODO EL DATASET
 # =========================================================
-y_pred = cat.predict(X_test)
-y_proba = cat.predict_proba(X_test)
+final_model = best_model.fit(
+    X,
+    y,
+    cat_features=cat_indices
+)
 
 # =========================================================
-# MÉTRICAS
+# EVALUACIÓN (referencia)
 # =========================================================
+y_pred = best_model.predict(X_test)
+y_proba = best_model.predict_proba(X_test)
+
 results = {
     "Modelo": "CatBoost",
     "Accuracy": accuracy_score(y_test, y_pred),
@@ -206,16 +180,13 @@ print(results)
 # =========================================================
 cm = confusion_matrix(y_test, y_pred)
 
+os.makedirs(os.path.join(BASE_DIR, "CatBoost"), exist_ok=True)
+
 plt.figure()
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
 plt.title("CatBoost")
 plt.savefig(os.path.join(BASE_DIR, "CatBoost", "catboost_confusion.png"))
 plt.show()
-
-# =========================================================
-# GUARDAR RESULTADOS
-# =========================================================
-os.makedirs(os.path.join(BASE_DIR, "CatBoost"), exist_ok=True)
 
 pd.DataFrame([results]).to_csv(
     os.path.join(BASE_DIR, "CatBoost", "catboost_metrics.csv"),
