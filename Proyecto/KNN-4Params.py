@@ -96,7 +96,7 @@ preprocessor = ColumnTransformer([
 ])
 
 # =========================================================
-# SPLIT
+# SPLIT (solo evaluación)
 # =========================================================
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
@@ -111,24 +111,24 @@ knn_pipe = Pipeline([
 ])
 
 # =========================================================
-# 🔥 DISTRIBUCIONES DE HIPERPARÁMETROS
+# 🔥 HIPERPARÁMETROS
 # =========================================================
 param_dist = {
-    "model__n_neighbors": [3, 5, 7, 11, 15],
+    "model__n_neighbors": [3, 5, 7, 9, 11, 15],
     "model__weights": ['uniform', 'distance'],
     "model__metric": ['euclidean', 'minkowski'],
     "model__p": [1, 2]
 }
 
 # =========================================================
-# CROSS VALIDATION (3 folds)
+# CROSS VALIDATION
 # =========================================================
 cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
 
 random_search = RandomizedSearchCV(
     estimator=knn_pipe,
     param_distributions=param_dist,
-    n_iter=4,  # 🔥 prueba 4 combinaciones (equivalente a tus 4 sets)
+    n_iter=6,  # puedes subir a 10 si quieres mejor búsqueda
     cv=cv,
     scoring='f1_weighted',
     n_jobs=-1,
@@ -137,7 +137,7 @@ random_search = RandomizedSearchCV(
 )
 
 # =========================================================
-# ENTRENAMIENTO
+# ENTRENAMIENTO (búsqueda)
 # =========================================================
 start = time.time()
 
@@ -145,20 +145,22 @@ random_search.fit(X_train, y_train)
 
 end = time.time()
 
-best_model = random_search.best_estimator_
-
 print("\nMEJORES PARÁMETROS:\n")
 print(random_search.best_params_)
 
+best_model = random_search.best_estimator_
+
 # =========================================================
-# PREDICCIÓN
+# 🔥 REENTRENAR CON TODO EL DATASET
+# =========================================================
+final_model = best_model.fit(X, y)
+
+# =========================================================
+# EVALUACIÓN (solo referencia)
 # =========================================================
 y_pred = best_model.predict(X_test)
 y_proba = best_model.predict_proba(X_test)
 
-# =========================================================
-# MÉTRICAS
-# =========================================================
 results = {
     "Modelo": "KNN",
     "Accuracy": accuracy_score(y_test, y_pred),
