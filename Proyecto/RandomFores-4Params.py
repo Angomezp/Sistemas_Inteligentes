@@ -128,7 +128,7 @@ param_dist = {
 # =========================================================
 # CROSS VALIDATION (3 folds)
 # =========================================================
-cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
 
 random_search = RandomizedSearchCV(
     estimator=rf_pipe,
