@@ -195,22 +195,50 @@ rf_pipe = Pipeline([
 ])
 
 # =========================================================
-# 4 GRUPOS DE HIPERPARÁMETROS
+# 4 SETS DE HIPERPARÁMETROS
 # =========================================================
-param_grid = {
+param_grid = [
 
-    # Grupo 1 -> cantidad de árboles
-    "model__n_estimators": [100, 200, 300],
+    # =====================================================
+    # SET 1
+    # =====================================================
+    {
+        "model__n_estimators": [100],
+        "model__max_depth": [10],
+        "model__max_features": ['sqrt'],
+        "model__min_samples_split": [2]
+    },
 
-    # Grupo 2 -> profundidad
-    "model__max_depth": [10, 15, 20, None],
+    # =====================================================
+    # SET 2
+    # =====================================================
+    {
+        "model__n_estimators": [200],
+        "model__max_depth": [15],
+        "model__max_features": ['sqrt'],
+        "model__min_samples_split": [5]
+    },
 
-    # Grupo 3 -> selección de variables
-    "model__max_features": ['sqrt', 'log2'],
+    # =====================================================
+    # SET 3
+    # =====================================================
+    {
+        "model__n_estimators": [300],
+        "model__max_depth": [20],
+        "model__max_features": ['log2'],
+        "model__min_samples_split": [10]
+    },
 
-    # Grupo 4 -> regularización
-    "model__min_samples_split": [2, 5, 10]
-}
+    # =====================================================
+    # SET 4
+    # =====================================================
+    {
+        "model__n_estimators": [500],
+        "model__max_depth": [None],
+        "model__max_features": ['log2'],
+        "model__min_samples_split": [2]
+    }
+]
 
 # =========================================================
 # TEN FOLD CROSS VALIDATION
