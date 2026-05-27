@@ -39,14 +39,23 @@ sns.set(style="whitegrid")
 # CARGAR DATA
 # =========================================================
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "icfes_transformado.csv")
+
+DATA_DIR = os.path.join(
+    BASE_DIR,
+    "icfes_transformado.csv"
+)
 
 df = pd.read_csv(DATA_DIR)
 
 # =========================================================
 # CONVERSIÓN DE TIPOS
 # =========================================================
-df = df.apply(lambda col: pd.to_numeric(col, errors="ignore"))
+df = df.apply(
+    lambda col: pd.to_numeric(
+        col,
+        errors="ignore"
+    )
+)
 
 # =========================================================
 # TARGET
@@ -75,22 +84,29 @@ df["target"] = df["PERCENTIL_GLOBAL"].apply(categorizar)
 # =========================================================
 # FEATURES
 # =========================================================
-features = [col for col in df.columns if (
+features = [
 
-    col.startswith("FAMI_") or
-    col.startswith("COLE_") or
-    col.startswith("ESTU_")
+    col for col in df.columns if (
 
-)]
+        col.startswith("FAMI_") or
+        col.startswith("COLE_") or
+        col.startswith("ESTU_")
 
-features = [col for col in features if not (
+    )
+]
 
-    col.startswith("PUNT_") or
-    col.startswith("PERCENTIL_")
+features = [
 
-)]
+    col for col in features if not (
+
+        col.startswith("PUNT_") or
+        col.startswith("PERCENTIL_")
+
+    )
+]
 
 X = df[features].copy()
+
 y = df["target"]
 
 # =========================================================
@@ -185,22 +201,50 @@ xgb_pipe = Pipeline([
 ])
 
 # =========================================================
-# 4 GRUPOS DE HIPERPARÁMETROS
+# 4 SETS DE HIPERPARÁMETROS
 # =========================================================
-param_grid = {
+param_grid = [
 
-    # Grupo 1 -> Complejidad
-    "model__max_depth": [3, 5, 7, 10],
+    # =====================================================
+    # SET 1
+    # =====================================================
+    {
+        "model__max_depth": [3],
+        "model__learning_rate": [0.01],
+        "model__n_estimators": [100],
+        "model__subsample": [0.6]
+    },
 
-    # Grupo 2 -> Aprendizaje
-    "model__learning_rate": [0.01, 0.05, 0.1, 0.2],
+    # =====================================================
+    # SET 2
+    # =====================================================
+    {
+        "model__max_depth": [5],
+        "model__learning_rate": [0.05],
+        "model__n_estimators": [200],
+        "model__subsample": [0.8]
+    },
 
-    # Grupo 3 -> Cantidad de árboles
-    "model__n_estimators": [100, 200, 300],
+    # =====================================================
+    # SET 3
+    # =====================================================
+    {
+        "model__max_depth": [7],
+        "model__learning_rate": [0.1],
+        "model__n_estimators": [300],
+        "model__subsample": [1.0]
+    },
 
-    # Grupo 4 -> Generalización
-    "model__subsample": [0.6, 0.8, 1.0]
-}
+    # =====================================================
+    # SET 4
+    # =====================================================
+    {
+        "model__max_depth": [10],
+        "model__learning_rate": [0.2],
+        "model__n_estimators": [500],
+        "model__subsample": [0.8]
+    }
+]
 
 # =========================================================
 # TEN FOLD CROSS VALIDATION
