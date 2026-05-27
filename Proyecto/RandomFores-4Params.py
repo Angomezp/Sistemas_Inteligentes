@@ -8,16 +8,29 @@ import time
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import (
+    train_test_split,
+    StratifiedKFold,
+    GridSearchCV
+)
+
+from sklearn.preprocessing import (
+    StandardScaler,
+    OneHotEncoder
+)
+
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 
 from sklearn.ensemble import RandomForestClassifier
 
 from sklearn.metrics import (
-    accuracy_score, f1_score, confusion_matrix,
-    roc_auc_score, mean_absolute_error, mean_squared_error
+    accuracy_score,
+    f1_score,
+    confusion_matrix,
+    roc_auc_score,
+    mean_absolute_error,
+    mean_squared_error
 )
 
 sns.set(style="whitegrid")
@@ -26,28 +39,43 @@ sns.set(style="whitegrid")
 # CARGAR DATA
 # =========================================================
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "icfes_transformado.csv")
+
+DATA_DIR = os.path.join(
+    BASE_DIR,
+    "icfes_transformado.csv"
+)
 
 df = pd.read_csv(DATA_DIR)
 
 # =========================================================
-# TIPOS
+# CONVERSIÓN DE TIPOS
 # =========================================================
-df = df.apply(lambda col: pd.to_numeric(col, errors="ignore"))
+df = df.apply(
+    lambda col: pd.to_numeric(
+        col,
+        errors="ignore"
+    )
+)
 
 # =========================================================
 # TARGET
 # =========================================================
 def categorizar(x):
+
     x = float(x)
+
     if x <= 20:
         return 0
+
     elif x <= 40:
         return 1
+
     elif x <= 60:
         return 2
+
     elif x <= 80:
         return 3
+
     else:
         return 4
 
@@ -56,148 +84,349 @@ df["target"] = df["PERCENTIL_GLOBAL"].apply(categorizar)
 # =========================================================
 # FEATURES
 # =========================================================
-features = [col for col in df.columns if (
-    col.startswith("FAMI_") or
-    col.startswith("COLE_") or
-    col.startswith("ESTU_")
-)]
+features = [
 
-features = [col for col in features if not (
-    col.startswith("PUNT_") or
-    col.startswith("PERCENTIL_")
-)]
+    col for col in df.columns if (
+
+        col.startswith("FAMI_") or
+        col.startswith("COLE_") or
+        col.startswith("ESTU_")
+
+    )
+]
+
+features = [
+
+    col for col in features if not (
+
+        col.startswith("PUNT_") or
+        col.startswith("PERCENTIL_")
+
+    )
+]
 
 X = df[features].copy()
+
 y = df["target"]
 
 # =========================================================
-# TIPOS
+# COLUMNAS NUMÉRICAS Y CATEGÓRICAS
 # =========================================================
-num_cols = X.select_dtypes(include=["int64", "float64"]).columns
-cat_cols = X.select_dtypes(include=["object", "category"]).columns
+num_cols = X.select_dtypes(
+    include=["int64", "float64"]
+).columns
+
+cat_cols = X.select_dtypes(
+    include=["object", "category"]
+).columns
 
 # =========================================================
 # LIMPIEZA
 # =========================================================
 for col in num_cols:
-    X.loc[:, col] = pd.to_numeric(X[col], errors="coerce")
-    X.loc[:, col] = X[col].fillna(X[col].median())
+
+    X.loc[:, col] = pd.to_numeric(
+        X[col],
+        errors="coerce"
+    )
+
+    X.loc[:, col] = X[col].fillna(
+        X[col].median()
+    )
 
 for col in cat_cols:
+
     X.loc[:, col] = X[col].astype(str)
-    X.loc[:, col] = X[col].replace("nan", "missing")
+
+    X.loc[:, col] = X[col].replace(
+        "nan",
+        "missing"
+    )
 
 # =========================================================
 # PREPROCESAMIENTO
 # =========================================================
 preprocessor = ColumnTransformer([
-    ('num', StandardScaler(), num_cols),
-    ('cat', OneHotEncoder(handle_unknown='ignore'), cat_cols)
+
+    (
+        'num',
+        StandardScaler(),
+        num_cols
+    ),
+
+    (
+        'cat',
+        OneHotEncoder(handle_unknown='ignore'),
+        cat_cols
+    )
 ])
 
 # =========================================================
-# SPLIT (SOLO PARA EVALUAR)
+# SPLIT SOLO PARA EVALUACIÓN
 # =========================================================
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42, stratify=y
+
+    X,
+    y,
+
+    test_size=0.2,
+
+    random_state=42,
+
+    stratify=y
 )
 
 # =========================================================
-# PIPELINE
+# PIPELINE RANDOM FOREST
 # =========================================================
 rf_pipe = Pipeline([
+
     ('prep', preprocessor),
+
     ('model', RandomForestClassifier(
+
         class_weight='balanced',
+
         random_state=42,
+
         n_jobs=-1
+
     ))
 ])
 
 # =========================================================
-# 🔥 HIPERPARÁMETROS (incluye tu config dentro del rango)
+# 4 GRUPOS DE HIPERPARÁMETROS
 # =========================================================
-param_dist = {
-    "model__n_estimators": [100, 200, 300, 500],
+param_grid = {
+
+    # Grupo 1 -> cantidad de árboles
+    "model__n_estimators": [100, 200, 300],
+
+    # Grupo 2 -> profundidad
     "model__max_depth": [10, 15, 20, None],
+
+    # Grupo 3 -> selección de variables
     "model__max_features": ['sqrt', 'log2'],
-    "model__min_samples_split": [2, 5, 10],
-    "model__min_samples_leaf": [1, 2, 4]
+
+    # Grupo 4 -> regularización
+    "model__min_samples_split": [2, 5, 10]
 }
 
 # =========================================================
-# CROSS VALIDATION (3 folds)
+# TEN FOLD CROSS VALIDATION
 # =========================================================
-cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+cv = StratifiedKFold(
 
-random_search = RandomizedSearchCV(
-    estimator=rf_pipe,
-    param_distributions=param_dist,
-    n_iter=8,  # puedes subirlo a 15 si quieres más precisión
-    cv=cv,
-    scoring='f1_weighted',
-    n_jobs=-1,
-    random_state=42,
-    verbose=1
+    n_splits=10,
+
+    shuffle=True,
+
+    random_state=42
 )
 
 # =========================================================
-# ENTRENAMIENTO (búsqueda)
+# GRID SEARCH
+# =========================================================
+grid_search = GridSearchCV(
+
+    estimator=rf_pipe,
+
+    param_grid=param_grid,
+
+    cv=cv,
+
+    scoring='f1_weighted',
+
+    n_jobs=-1,
+
+    verbose=2
+)
+
+# =========================================================
+# ENTRENAMIENTO
 # =========================================================
 start = time.time()
 
-random_search.fit(X_train, y_train)
+grid_search.fit(X_train, y_train)
 
 end = time.time()
 
+# =========================================================
+# MEJORES PARÁMETROS
+# =========================================================
 print("\nMEJORES PARÁMETROS:\n")
-print(random_search.best_params_)
+
+print(grid_search.best_params_)
+
+best_model = grid_search.best_estimator_
 
 # =========================================================
-# 🔥 REENTRENAR CON TODOS LOS DATOS
+# REENTRENAR CON TODO EL DATASET
 # =========================================================
-best_model = random_search.best_estimator_
-
 final_model = best_model.fit(X, y)
 
 # =========================================================
-# EVALUACIÓN (solo para ver desempeño)
+# PREDICCIONES
 # =========================================================
 y_pred = best_model.predict(X_test)
+
 y_proba = best_model.predict_proba(X_test)
 
+# =========================================================
+# MÉTRICAS
+# =========================================================
 results = {
+
     "Modelo": "Random Forest",
-    "Accuracy": accuracy_score(y_test, y_pred),
-    "F1": f1_score(y_test, y_pred, average='weighted'),
-    "ROC-AUC": roc_auc_score(y_test, y_proba, multi_class='ovr'),
-    "MAE": mean_absolute_error(y_test, y_pred),
-    "RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
-    "Tiempo": end-start
+
+    "Accuracy": accuracy_score(
+        y_test,
+        y_pred
+    ),
+
+    "F1": f1_score(
+        y_test,
+        y_pred,
+        average='weighted'
+    ),
+
+    "ROC-AUC": roc_auc_score(
+        y_test,
+        y_proba,
+        multi_class='ovr'
+    ),
+
+    "MAE": mean_absolute_error(
+        y_test,
+        y_pred
+    ),
+
+    "RMSE": np.sqrt(
+        mean_squared_error(
+            y_test,
+            y_pred
+        )
+    ),
+
+    "Tiempo": end - start
 }
 
+# =========================================================
+# MOSTRAR RESULTADOS
+# =========================================================
 print("\nRESULTADOS:\n")
+
 print(results)
 
 # =========================================================
 # MATRIZ DE CONFUSIÓN
 # =========================================================
-cm = confusion_matrix(y_test, y_pred)
+cm = confusion_matrix(
+    y_test,
+    y_pred
+)
 
-os.makedirs(os.path.join(BASE_DIR, "RandomForest"), exist_ok=True)
+# =========================================================
+# CREAR CARPETA
+# =========================================================
+os.makedirs(
 
-plt.figure()
-sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    os.path.join(
+        BASE_DIR,
+        "RandomForest"
+    ),
+
+    exist_ok=True
+)
+
+# =========================================================
+# HEATMAP
+# =========================================================
+plt.figure(figsize=(8,6))
+
+sns.heatmap(
+
+    cm,
+
+    annot=True,
+
+    fmt="d",
+
+    cmap="Blues"
+)
+
 plt.title("Random Forest")
-plt.savefig(os.path.join(BASE_DIR, "RandomForest", "rf_confusion.png"))
+
+plt.xlabel("Predicción")
+
+plt.ylabel("Real")
+
+plt.savefig(
+
+    os.path.join(
+
+        BASE_DIR,
+
+        "RandomForest",
+
+        "rf_confusion.png"
+    )
+)
+
 plt.show()
 
+# =========================================================
+# EXPORTAR MÉTRICAS
+# =========================================================
 pd.DataFrame([results]).to_csv(
-    os.path.join(BASE_DIR, "RandomForest", "rf_metrics.csv"),
+
+    os.path.join(
+
+        BASE_DIR,
+
+        "RandomForest",
+
+        "rf_metrics.csv"
+    ),
+
     index=False
 )
 
+# =========================================================
+# EXPORTAR MATRIZ
+# =========================================================
 pd.DataFrame(cm).to_csv(
-    os.path.join(BASE_DIR, "RandomForest", "rf_confusion.csv"),
+
+    os.path.join(
+
+        BASE_DIR,
+
+        "RandomForest",
+
+        "rf_confusion.csv"
+    ),
+
     index=False
 )
+
+# =========================================================
+# EXPORTAR MEJORES HIPERPARÁMETROS
+# =========================================================
+pd.DataFrame([grid_search.best_params_]).to_csv(
+
+    os.path.join(
+
+        BASE_DIR,
+
+        "RandomForest",
+
+        "rf_best_params.csv"
+    ),
+
+    index=False
+)
+
+# =========================================================
+# FINAL
+# =========================================================
+print("\nMODELO FINAL ENTRENADO CON TODO EL DATASET")
