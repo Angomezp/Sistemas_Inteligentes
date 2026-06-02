@@ -1,6 +1,7 @@
 # explicit ignore-file
 Canibales_Misioneros/area_config.json
 **/icfes_transformado.csv
+**/icfes_original.csv
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -1,0 +1,34 @@
+===== ESTADÍSTICAS BÁSICAS =====
+
+count    3.308074e+06
+mean     2.504597e+02
+std      5.168630e+01
+min      0.000000e+00
+25%      2.110000e+02
+50%      2.470000e+02
+75%      2.870000e+02
+max      5.000000e+02
+
+
+
+Varianza: 2671.4739
+
+Asimetría: 0.3146
+
+Curtosis: -0.3942
+
+
+===== CONTEO POR CATEGORÍA =====
+
+Categoría  0:        220 registros (0.01%)
+Categoría  1:         90 registros (0.00%)
+Categoría  2:        720 registros (0.02%)
+Categoría  3:      99870 registros (3.02%)
+Categoría  4:     681024 registros (20.59%)
+Categoría  5:     958263 registros (28.97%)
+Categoría  6:     823483 registros (24.89%)
+Categoría  7:     526375 registros (15.91%)
+Categoría  8:     190254 registros (5.75%)
+Categoría  9:      25478 registros (0.77%)
+Categoría 10:       2167 registros (0.07%)
+Categoría 11:        130 registros (0.00%)

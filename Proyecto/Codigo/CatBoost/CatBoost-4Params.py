@@ -46,25 +46,45 @@ df = pd.read_csv(DATA_PATH)
 # TARGET
 # =========================================================
 def categorizar(x):
-
     x = float(x)
 
-    if x <= 20:
+    if x <= 41.7:
         return 0
 
-    elif x <= 40:
+    elif x <= 83.4:
         return 1
-
-    elif x <= 60:
+    
+    elif x <= 125.1:
         return 2
 
-    elif x <= 80:
+    elif x <= 166.8:
         return 3
-
-    else:
+    
+    elif x <= 208.5:
         return 4
+    
+    elif x <= 250.2:
+        return 5
+    
+    elif x <= 291.9:
+        return 6
+    
+    elif x <= 333.6:
+        return 7
+    
+    elif x <= 375.3:
+        return 8
+    
+    elif x <= 417:
+        return 10
+    
+    elif x <= 458.7:
+        return 11
+    
+    else:
+        return 12
 
-df["target"] = df["PERCENTIL_GLOBAL"].apply(categorizar)
+df["target"] = df["PUNT_GLOBAL"].apply(categorizar)
 
 # =========================================================
 # FEATURES

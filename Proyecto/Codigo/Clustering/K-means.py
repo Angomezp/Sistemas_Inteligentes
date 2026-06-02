@@ -5,13 +5,12 @@ from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
+
 
 # ============================================================
 # 1. CARGAR DATASET
 # ============================================================
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "icfes_transformado.csv")
+DATA_PATH = "CSV/icfes_transformado.csv"
 df = pd.read_csv(DATA_PATH)
 
 # ============================================================
@@ -19,10 +18,12 @@ df = pd.read_csv(DATA_PATH)
 # ============================================================
 X = df.select_dtypes(include=[np.number]).dropna()
 
+X.info()  # Verificar número de filas y columnas después de limpiar
+
 # ============================================================
 # 3. MUESTREO PARA HACER FACTIBLES AMBOS MÉTODOS
 # ============================================================
-MAX_SAMPLES = 2000000   # Para jerárquico; K‑Means puede usar más, pero seguimos la misma muestra
+MAX_SAMPLES = 2_000_000   # Para jerárquico; K‑Means puede usar más, pero seguimos la misma muestra
 if len(X) > MAX_SAMPLES:
     print(f"Dataset original con {len(X)} filas. Se toma una muestra de {MAX_SAMPLES} para ambos análisis.")
     X_sample = X.sample(n=MAX_SAMPLES, random_state=42)
@@ -52,6 +53,7 @@ plt.xlabel('Número de clusters')
 plt.ylabel('Inercia')
 plt.grid(True)
 plt.show()
+plt.savefig("Imagenes/KMeans_Codo.png")
 
 # (Opcional) Mostrar el punto de inflexión automático
 # Se puede calcular la diferencia de inercias para sugerir un k

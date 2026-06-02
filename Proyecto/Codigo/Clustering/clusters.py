@@ -8,8 +8,7 @@ import os
 # ============================================================
 # 1. CARGAR DATASET
 # ============================================================
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "icfes_transformado.csv")
+DATA_PATH = "CSV/icfes_transformado.csv"
 df = pd.read_csv(DATA_PATH)
 
 # ============================================================
