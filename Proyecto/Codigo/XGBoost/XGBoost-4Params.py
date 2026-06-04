@@ -2,48 +2,37 @@
 # LIBRERÍAS
 # =========================================================
 import os
-import pandas as pd
-import numpy as np
 import time
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import seaborn as sns
 
-from sklearn.model_selection import (
-    train_test_split,
-    StratifiedKFold,
-    GridSearchCV
-)
-
-from sklearn.preprocessing import (
-    StandardScaler,
-    OneHotEncoder
-)
-
 from sklearn.compose import ColumnTransformer
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    roc_auc_score,
+)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+import joblib
 
 from xgboost import XGBClassifier
 
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    confusion_matrix,
-    roc_auc_score,
-    mean_absolute_error,
-    mean_squared_error
-)
 
 sns.set(style="whitegrid")
 
 # =========================================================
 # CARGAR DATA
 # =========================================================
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-DATA_DIR = os.path.join(
-    BASE_DIR,
-    "icfes_transformado.csv"
-)
+DATA_DIR = os.path.join("CSV", "icfes_transformado.csv")
+OUTPUT_DIR = os.path.join("Resultados", "XGBoost")
 
 df = pd.read_csv(DATA_DIR)
 
@@ -60,68 +49,28 @@ df = df.apply(
 # =========================================================
 # TARGET
 # =========================================================
-def categorizar(x):
-    x = float(x)
+df["target"] = pd.qcut(
+    df["PUNT_GLOBAL"],
+    q=5,
+    labels=False
+)
 
-    if x <= 41.7:
-        return 0
-
-    elif x <= 83.4:
-        return 1
-    
-    elif x <= 125.1:
-        return 2
-
-    elif x <= 166.8:
-        return 3
-    
-    elif x <= 208.5:
-        return 4
-    
-    elif x <= 250.2:
-        return 5
-    
-    elif x <= 291.9:
-        return 6
-    
-    elif x <= 333.6:
-        return 7
-    
-    elif x <= 375.3:
-        return 8
-    
-    elif x <= 417:
-        return 10
-    
-    elif x <= 458.7:
-        return 11
-    
-    else:
-        return 12
-
-df["target"] = df["PUNT_GLOBAL"].apply(categorizar)
 
 # =========================================================
 # FEATURES
 # =========================================================
 features = [
-
-    col for col in df.columns if (
-
+    col for col in df.columns if ( 
         col.startswith("FAMI_") or
         col.startswith("COLE_") or
         col.startswith("ESTU_")
-
     )
 ]
 
 features = [
-
     col for col in features if not (
-
         col.startswith("PUNT_") or
         col.startswith("PERCENTIL_")
-
     )
 ]
 
@@ -167,57 +116,30 @@ for col in cat_cols:
 # PREPROCESAMIENTO
 # =========================================================
 preprocessor = ColumnTransformer([
-
-    (
-        'num',
-        StandardScaler(),
-        num_cols
-    ),
-
-    (
-        'cat',
-        OneHotEncoder(handle_unknown='ignore'),
-        cat_cols
-    )
-
+    ("num", StandardScaler(), num_cols),
+    ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=True), cat_cols),
 ])
 
 # =========================================================
 # SPLIT PARA EVALUACIÓN
 # =========================================================
-X_train, X_test, y_train, y_test = train_test_split(
-
-    X,
-    y,
-
-    test_size=0.2,
-
-    random_state=42,
-
-    stratify=y
-)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
 # =========================================================
 # PIPELINE XGBOOST
 # =========================================================
 xgb_pipe = Pipeline([
-
-    ('prep', preprocessor),
-
-    ('model', XGBClassifier(
-
-        objective='multi:softprob',
-
-        num_class=5,
-
-        eval_metric='mlogloss',
-
-        random_state=42,
-
-        n_jobs=-1
-
-    ))
-
+    ("prep", preprocessor),
+    (
+        "model",
+        XGBClassifier(
+            objective="multi:softprob",
+            num_class=5,
+            eval_metric="mlogloss",
+            random_state=42,
+            n_jobs=3,
+        ),
+    ),
 ])
 
 # =========================================================
@@ -229,9 +151,9 @@ param_grid = [
     # SET 1
     # =====================================================
     {
-        "model__max_depth": [3],
-        "model__learning_rate": [0.01],
-        "model__n_estimators": [100],
+        "model__max_depth": [12],
+        "model__learning_rate": [0.05],
+        "model__n_estimators": [300],
         "model__subsample": [0.6]
     },
 
@@ -239,9 +161,9 @@ param_grid = [
     # SET 2
     # =====================================================
     {
-        "model__max_depth": [5],
-        "model__learning_rate": [0.05],
-        "model__n_estimators": [200],
+        "model__max_depth": [12],
+        "model__learning_rate": [0.08],
+        "model__n_estimators": [250],
         "model__subsample": [0.8]
     },
 
@@ -249,19 +171,19 @@ param_grid = [
     # SET 3
     # =====================================================
     {
-        "model__max_depth": [7],
+        "model__max_depth": [15],
         "model__learning_rate": [0.1],
         "model__n_estimators": [300],
-        "model__subsample": [1.0]
+        "model__subsample": [0.6]
     },
 
     # =====================================================
     # SET 4
     # =====================================================
     {
-        "model__max_depth": [10],
+        "model__max_depth": [15],
         "model__learning_rate": [0.2],
-        "model__n_estimators": [500],
+        "model__n_estimators": [250],
         "model__subsample": [0.8]
     }
 ]
@@ -282,18 +204,12 @@ cv = StratifiedKFold(
 # GRID SEARCH
 # =========================================================
 grid_search = GridSearchCV(
-
     estimator=xgb_pipe,
-
     param_grid=param_grid,
-
     cv=cv,
-
-    scoring='f1_weighted',
-
-    n_jobs=-1,
-
-    verbose=2
+    scoring="f1_weighted",
+    n_jobs=3,
+    verbose=2,
 )
 
 # =========================================================
@@ -313,11 +229,6 @@ print("\nMEJORES PARÁMETROS:\n")
 print(grid_search.best_params_)
 
 best_model = grid_search.best_estimator_
-
-# =========================================================
-# REENTRENAR CON TODO EL DATASET
-# =========================================================
-final_model = best_model.fit(X, y)
 
 # =========================================================
 # PREDICCIONES
@@ -383,104 +294,42 @@ cm = confusion_matrix(
 # =========================================================
 # CREAR CARPETA
 # =========================================================
-os.makedirs(
-
-    os.path.join(
-        BASE_DIR,
-        "XGBOOST"
-    ),
-
-    exist_ok=True
-)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # =========================================================
 # HEATMAP
 # =========================================================
-plt.figure(figsize=(8,6))
-
-sns.heatmap(
-
-    cm,
-
-    annot=True,
-
-    fmt="d",
-
-    cmap="Blues"
-)
-
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
 plt.title("XGBoost")
-
 plt.xlabel("Predicción")
-
 plt.ylabel("Real")
-
-plt.savefig(
-
-    os.path.join(
-
-        BASE_DIR,
-
-        "XGBOOST",
-
-        "xgboost_confusion.png"
-    )
-)
-
+plt.savefig(os.path.join(OUTPUT_DIR, "xgboost_confusion.png"))
 plt.show()
 
 # =========================================================
 # EXPORTAR MÉTRICAS
 # =========================================================
-pd.DataFrame([results]).to_csv(
-
-    os.path.join(
-
-        BASE_DIR,
-
-        "XGBOOST",
-
-        "xgboost_metrics.csv"
-    ),
-
-    index=False
-)
+pd.DataFrame([results]).to_csv(os.path.join(OUTPUT_DIR, "xgboost_metrics.csv"), index=False)
 
 # =========================================================
 # EXPORTAR MATRIZ
 # =========================================================
-pd.DataFrame(cm).to_csv(
-
-    os.path.join(
-
-        BASE_DIR,
-
-        "XGBOOST",
-
-        "xgboost_confusion.csv"
-    ),
-
-    index=False
-)
+pd.DataFrame(cm).to_csv(os.path.join(OUTPUT_DIR, "xgboost_confusion.csv"), index=False)
 
 # =========================================================
 # EXPORTAR MEJORES HIPERPARÁMETROS
 # =========================================================
-pd.DataFrame([grid_search.best_params_]).to_csv(
+pd.DataFrame([grid_search.best_params_]).to_csv(os.path.join(OUTPUT_DIR, "xgboost_best_params.csv"), index=False)
 
-    os.path.join(
+# =========================================================
+# REENTRENAR CON TODO EL DATASET
+# =========================================================
+final_model = best_model.fit(X, y)
 
-        BASE_DIR,
-
-        "XGBOOST",
-
-        "xgboost_best_params.csv"
-    ),
-
-    index=False
-)
+final_model.save_model(os.path.join(OUTPUT_DIR, "xgboost_final_model.json"))
 
 # =========================================================
 # FINAL
 # =========================================================
-print("\nMODELO FINAL ENTRENADO CON TODO EL DATASET")
+print("\nModelo XGBoost entrenado y evaluado con éxito. Resultados guardados en la carpeta " + OUTPUT_DIR + ".\n")
