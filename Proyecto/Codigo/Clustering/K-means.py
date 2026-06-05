@@ -5,6 +5,7 @@ from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 
 # ============================================================
@@ -23,7 +24,7 @@ X.info()  # Verificar número de filas y columnas después de limpiar
 # ============================================================
 # 3. MUESTREO PARA HACER FACTIBLES AMBOS MÉTODOS
 # ============================================================
-MAX_SAMPLES = 2_000_000   # Para jerárquico; K‑Means puede usar más, pero seguimos la misma muestra
+MAX_SAMPLES = 2_000_000   
 if len(X) > MAX_SAMPLES:
     print(f"Dataset original con {len(X)} filas. Se toma una muestra de {MAX_SAMPLES} para ambos análisis.")
     X_sample = X.sample(n=MAX_SAMPLES, random_state=42)
@@ -40,7 +41,7 @@ X_scaled = scaler.fit_transform(X_sample)
 # 6. K-MEANS CON GRÁFICA DEL CODO (INERCIA)
 # ============================================================
 inercias = []
-k_range = range(1, min(15, len(X_sample)))   # Hasta 10 clusters
+k_range = range(1, min(15, len(X_sample)))   
 for k in k_range:
     kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
     kmeans.fit(X_scaled)
@@ -52,8 +53,10 @@ plt.title('Método del Codo - K-Means')
 plt.xlabel('Número de clusters')
 plt.ylabel('Inercia')
 plt.grid(True)
+os.makedirs("Imagenes", exist_ok=True)
+plt.savefig("Imagenes/KMeans_Codo.png", bbox_inches='tight', dpi=150)
 plt.show()
-plt.savefig("Imagenes/KMeans_Codo.png")
+plt.close()
 
 # (Opcional) Mostrar el punto de inflexión automático
 # Se puede calcular la diferencia de inercias para sugerir un k
