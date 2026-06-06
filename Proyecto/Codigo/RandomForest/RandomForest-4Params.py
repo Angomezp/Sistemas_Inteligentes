@@ -202,7 +202,7 @@ plt.title("Random Forest")
 plt.xlabel("Predicción")
 plt.ylabel("Real")
 plt.savefig(os.path.join(OUTPUT_DIR, "rf_confusion_matrix.png"))
-plt.show()
+plt.close()
 
 # Exportar métricas a CSV
 pd.DataFrame([results]).to_csv(os.path.join(OUTPUT_DIR, "rf_metrics.csv"), index=False)

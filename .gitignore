@@ -2,6 +2,8 @@
 Canibales_Misioneros/area_config.json
 **/icfes_transformado.csv
 **/icfes_original.csv
+**/*.pkl # Modelos entrenados
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

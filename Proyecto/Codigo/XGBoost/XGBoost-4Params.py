@@ -137,7 +137,11 @@ xgb_pipe = Pipeline([
             num_class=5,
             eval_metric="mlogloss",
             random_state=42,
-            n_jobs=3,
+            n_jobs=4,
+            max_depth=15,
+            learning_rate=0.1,
+            n_estimators=300,
+            subsample=0.6
         ),
     ),
 ])
@@ -218,7 +222,6 @@ grid_search = GridSearchCV(
 start = time.time()
 
 grid_search.fit(X_train, y_train)
-
 end = time.time()
 
 # =========================================================
@@ -305,7 +308,7 @@ plt.title("XGBoost")
 plt.xlabel("Predicción")
 plt.ylabel("Real")
 plt.savefig(os.path.join(OUTPUT_DIR, "xgboost_confusion.png"))
-plt.show()
+plt.close()
 
 # =========================================================
 # EXPORTAR MÉTRICAS
@@ -327,7 +330,7 @@ pd.DataFrame([grid_search.best_params_]).to_csv(os.path.join(OUTPUT_DIR, "xgboos
 # =========================================================
 final_model = best_model.fit(X, y)
 
-final_model.save_model(os.path.join(OUTPUT_DIR, "xgboost_final_model.json"))
+joblib.dump(best_model, os.path.join(OUTPUT_DIR, "xgboost_final_model.pkl"))
 
 # =========================================================
 # FINAL

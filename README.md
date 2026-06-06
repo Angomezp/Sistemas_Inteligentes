@@ -18,7 +18,7 @@ Repositorio para proyectos y ejercicios relacionados con la materia Sistemas Int
 | **Canibales_Misioneros/** | Bot para el puzzle "Misioneros y Caníbales" — captura el juego, detecta personajes y balsa mediante plantillas, automatiza clicks para resolver el puzzle |
 | **Cuadrito/** | Agente inteligente que juega Cuadrito usando búsqueda minimax con optimizaciones |
 | **Tetris/** | Bot para jugar Tetris automáticamente analizando el tablero y calculando movimientos óptimos |
-| **Proyecto/** | Análisis de datos ICFES con clustering (K-means) y clasificadores (KNN, RandomForest, CatBoost) |
+| **Proyecto/** | Análisis de datos ICFES con clustering (K-means) y clasificadores (RandomForest, CatBoost, XGBoost) |
 
 **Notas:**
 - El archivo `Canibales_Misioneros/area_config.json` se genera localmente durante calibración. Si es primera vez, ejecuta la opción de calibrado en el script.
