@@ -1,6 +1,3 @@
-# =========================================================
-# LIBRERÍAS
-# =========================================================
 import os
 import time
 
@@ -28,37 +25,14 @@ from xgboost import XGBClassifier
 
 sns.set(style="whitegrid")
 
-# =========================================================
-# CARGAR DATA
-# =========================================================
+# Paths
 DATA_DIR = os.path.join("CSV", "icfes_transformado.csv")
 OUTPUT_DIR = os.path.join("Resultados", "XGBoost")
 
 df = pd.read_csv(DATA_DIR)
 
-# =========================================================
-# CONVERSIÓN DE TIPOS
-# =========================================================
-df = df.apply(
-    lambda col: pd.to_numeric(
-        col,
-        errors="ignore"
-    )
-)
 
-# =========================================================
-# TARGET
-# =========================================================
-df["target"] = pd.qcut(
-    df["PUNT_GLOBAL"],
-    q=5,
-    labels=False
-)
-
-
-# =========================================================
-# FEATURES
-# =========================================================
+# Features de predicción (solo las que empiezan con FAMI_, COLE_ o ESTU_, excluyendo las que empiezan con PUNT_ o PERCENTIL_)
 features = [
     col for col in df.columns if ( 
         col.startswith("FAMI_") or
@@ -78,9 +52,8 @@ X = df[features].copy()
 
 y = df["target"]
 
-# =========================================================
-# COLUMNAS NUMÉRICAS Y CATEGÓRICAS
-# =========================================================
+# Columnas numéricas y categóricas
+
 num_cols = X.select_dtypes(
     include=["int64", "float64"]
 ).columns
@@ -89,45 +62,16 @@ cat_cols = X.select_dtypes(
     include=["object", "category"]
 ).columns
 
-# =========================================================
-# LIMPIEZA
-# =========================================================
-for col in num_cols:
-
-    X.loc[:, col] = pd.to_numeric(
-        X[col],
-        errors="coerce"
-    )
-
-    X.loc[:, col] = X[col].fillna(
-        X[col].median()
-    )
-
-for col in cat_cols:
-
-    X.loc[:, col] = X[col].astype(str)
-
-    X.loc[:, col] = X[col].replace(
-        "nan",
-        "missing"
-    )
-
-# =========================================================
-# PREPROCESAMIENTO
-# =========================================================
+# Preprocesamiento para el metodo XGBoost (escala para numéricas, one-hot encoding para categóricas)
 preprocessor = ColumnTransformer([
     ("num", StandardScaler(), num_cols),
     ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=True), cat_cols),
 ])
 
-# =========================================================
-# SPLIT PARA EVALUACIÓN
-# =========================================================
+# split train-test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# =========================================================
-# PIPELINE XGBOOST
-# =========================================================
+# Crear Pipeline
 xgb_pipe = Pipeline([
     ("prep", preprocessor),
     (
@@ -146,14 +90,10 @@ xgb_pipe = Pipeline([
     ),
 ])
 
-# =========================================================
-# 4 SETS DE HIPERPARÁMETROS
-# =========================================================
+# Sets de hiperparámetros para probar (4 configuraciones)
 param_grid = [
 
-    # =====================================================
-    # SET 1
-    # =====================================================
+    # Set 1
     {
         "model__max_depth": [12],
         "model__learning_rate": [0.05],
@@ -161,9 +101,7 @@ param_grid = [
         "model__subsample": [0.6]
     },
 
-    # =====================================================
-    # SET 2
-    # =====================================================
+    # Set 2
     {
         "model__max_depth": [12],
         "model__learning_rate": [0.08],
@@ -171,9 +109,7 @@ param_grid = [
         "model__subsample": [0.8]
     },
 
-    # =====================================================
-    # SET 3
-    # =====================================================
+    # Set 3
     {
         "model__max_depth": [15],
         "model__learning_rate": [0.1],
@@ -181,9 +117,7 @@ param_grid = [
         "model__subsample": [0.6]
     },
 
-    # =====================================================
-    # SET 4
-    # =====================================================
+    # Set 4
     {
         "model__max_depth": [15],
         "model__learning_rate": [0.2],
@@ -192,9 +126,7 @@ param_grid = [
     }
 ]
 
-# =========================================================
-# TEN FOLD CROSS VALIDATION
-# =========================================================
+# Crear validación cruzada estratificada de 10 folds
 cv = StratifiedKFold(
 
     n_splits=10,
@@ -204,9 +136,7 @@ cv = StratifiedKFold(
     random_state=42
 )
 
-# =========================================================
-# GRID SEARCH
-# =========================================================
+# Grid Search (para probar las 4 configuraciones de hiperparámetros) con validación cruzada
 grid_search = GridSearchCV(
     estimator=xgb_pipe,
     param_grid=param_grid,
@@ -216,33 +146,25 @@ grid_search = GridSearchCV(
     verbose=2,
 )
 
-# =========================================================
-# ENTRENAMIENTO
-# =========================================================
+# Entrenamiento y validacion con Grid Search (medición de tiempo incluida)
 start = time.time()
 
 grid_search.fit(X_train, y_train)
 end = time.time()
 
-# =========================================================
-# MEJORES PARÁMETROS
-# =========================================================
+# Mostrar mejores hiperparámetros encontrados
 print("\nMEJORES PARÁMETROS:\n")
 
 print(grid_search.best_params_)
 
 best_model = grid_search.best_estimator_
 
-# =========================================================
-# PREDICCIONES
-# =========================================================
+# Predicciones con el mejor modelo encontrado
 y_pred = best_model.predict(X_test)
 
 y_proba = best_model.predict_proba(X_test)
 
-# =========================================================
-# MÉTRICAS
-# =========================================================
+# Calcular métricas de evaluación
 results = {
 
     "Modelo": "XGBoost",
@@ -279,29 +201,21 @@ results = {
     "Tiempo": end - start
 }
 
-# =========================================================
-# MOSTRAR RESULTADOS
-# =========================================================
+# Mostrar resultados
 print("\nRESULTADOS:\n")
 
 print(results)
 
-# =========================================================
-# MATRIZ DE CONFUSIÓN
-# =========================================================
+# Matriz de confusión
 cm = confusion_matrix(
     y_test,
     y_pred
 )
 
-# =========================================================
-# CREAR CARPETA
-# =========================================================
+# Asegurar que la carpeta de resultados exista
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# =========================================================
-# HEATMAP
-# =========================================================
+# Alizar matriz de confusión con heatmap
 plt.figure(figsize=(8, 6))
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
 plt.title("XGBoost")
@@ -310,29 +224,16 @@ plt.ylabel("Real")
 plt.savefig(os.path.join(OUTPUT_DIR, "xgboost_confusion.png"))
 plt.close()
 
-# =========================================================
-# EXPORTAR MÉTRICAS
-# =========================================================
+# Exportar métricas a CSV
 pd.DataFrame([results]).to_csv(os.path.join(OUTPUT_DIR, "xgboost_metrics.csv"), index=False)
 
-# =========================================================
-# EXPORTAR MATRIZ
-# =========================================================
 pd.DataFrame(cm).to_csv(os.path.join(OUTPUT_DIR, "xgboost_confusion.csv"), index=False)
 
-# =========================================================
-# EXPORTAR MEJORES HIPERPARÁMETROS
-# =========================================================
 pd.DataFrame([grid_search.best_params_]).to_csv(os.path.join(OUTPUT_DIR, "xgboost_best_params.csv"), index=False)
 
-# =========================================================
-# REENTRENAR CON TODO EL DATASET
-# =========================================================
+# Reentrenar el modelo final con todos los datos (train + test) usando los mejores hiperparámetros encontrados
 final_model = best_model.fit(X, y)
 
 joblib.dump(best_model, os.path.join(OUTPUT_DIR, "xgboost_final_model.pkl"))
 
-# =========================================================
-# FINAL
-# =========================================================
 print("\nModelo XGBoost entrenado y evaluado con éxito. Resultados guardados en la carpeta " + OUTPUT_DIR + ".\n")

@@ -25,33 +25,15 @@ import joblib
 
 sns.set(style="whitegrid")
 
-# =========================================================
-# CARGAR DATA
-# =========================================================
+# Paths
 DATA_DIR = os.path.join("CSV", "icfes_transformado.csv")
 OUTPUT_DIR = os.path.join("Resultados", "RandomForest")
 
 
 df = pd.read_csv(DATA_DIR)
 
-# =========================================================
-# CONVERSIÓN DE TIPOS
-# =========================================================
-df = df.apply(lambda col: pd.to_numeric(col, errors="ignore"))
 
-# =========================================================
-# TARGET
-# =========================================================
-df["target"] = pd.qcut(
-    df["PUNT_GLOBAL"],
-    q=5,
-    labels=False
-)
-
-
-# =========================================================
-# FEATURES
-# =========================================================
+# Cargar features de predicción (solo las que empiezan con FAMI_, COLE_ o ESTU_, excluyendo las que empiezan con PUNT_ o PERCENTIL_)
 features = [
     col for col in df.columns
     if (col.startswith("FAMI_") or col.startswith("COLE_") or col.startswith("ESTU_"))
@@ -68,15 +50,11 @@ features = [
 X = df[features].copy()
 y = df["target"]
 
-# =========================================================
-# COLUMNAS NUMÉRICAS Y CATEGÓRICAS
-# =========================================================
+# Seleccionar columnas numéricas y categóricas
 num_cols = X.select_dtypes(include=["int64", "float64"]).columns
 cat_cols = X.select_dtypes(include=["object", "category"]).columns
 
-# =========================================================
-# LIMPIEZA
-# =========================================================
+# Limpieza de datos: numéricas con mediana, categóricas con "missing"
 for col in num_cols:
     X.loc[:, col] = pd.to_numeric(X[col], errors="coerce")
     X.loc[:, col] = X[col].fillna(X[col].median())
@@ -85,7 +63,7 @@ for col in cat_cols:
     X.loc[:, col] = X[col].astype(str)
     X.loc[:, col] = X[col].replace("nan", "missing")
 
-# Preprocesamiento para el metodo? 
+# Preprocesamiento para el metodo Random Forest (escala para numéricas, one-hot encoding para categóricas) 
 preprocessor = ColumnTransformer([
     ("num", StandardScaler(), num_cols),
     ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=True), cat_cols),

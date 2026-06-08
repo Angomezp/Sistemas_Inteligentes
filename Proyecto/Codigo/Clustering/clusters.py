@@ -5,40 +5,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-# ============================================================
-# 1. CARGAR DATASET
-# ============================================================
+ # Path
 DATA_PATH = "CSV/icfes_transformado.csv"
 df = pd.read_csv(DATA_PATH)
 
-# ============================================================
-# 2. SELECCIONAR COLUMNAS NUMÉRICAS
-# ============================================================
+# Seleccionar solo las columnas numéricas para el clustering
 X = df.select_dtypes(include=[np.number])
 X = X.dropna()
 
-# ============================================================
-# 3. MUESTREO PARA HACER FACTIBLE EL CLUSTERING JERÁRQUICO
-# ============================================================
+# Limitar el número de muestras para evitar problemas de memoria
 MAX_SAMPLES = 50000   # Ajusta según la memoria disponible
 if len(X) > MAX_SAMPLES:
     print(f"Dataset original tiene {len(X)} filas. Se tomará una muestra aleatoria de {MAX_SAMPLES} filas.")
     X = X.sample(n=MAX_SAMPLES, random_state=42)
 
-# ============================================================
-# 4. ESCALAMIENTO
-# ============================================================
+# Estandarizar los datos
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# ============================================================
-# 5. AGRUPAMIENTO JERÁRQUICO
-# ============================================================
+# Agrupamiento Jerárquico
 linked = linkage(X_scaled, method='ward')
 
-# ============================================================
-# 6. GRÁFICA DEL CODO (ALTURAS DE FUSIÓN)
-# ============================================================
+# Grafico de alturas de fusión para determinar el número óptimo de clusters
 max_clusters = min(20, len(X))
 alturas = linked[-max_clusters+1:, 2]
 
@@ -50,9 +38,7 @@ plt.ylabel('Distancia de Fusión (Altura)')
 plt.grid(True)
 plt.show()
 
-# ============================================================
-# 7. DENDROGRAMA CON LÍNEAS DE CORTE
-# ============================================================
+# Dendrograma para visualizar las fusiones
 plt.figure(figsize=(15, 8))
 dendrogram(
     linked,
@@ -79,9 +65,7 @@ plt.ylabel('Distancia Euclidiana')
 plt.legend()
 plt.show()
 
-# ============================================================
-# 8. ASIGNAR CLUSTERS (ejemplo con 3 clusters)
-# ============================================================
+# Asignar clusters a la muestra
 k_seleccionado = 3
 clusters = fcluster(linked, k_seleccionado, criterion='maxclust')
 
@@ -89,9 +73,7 @@ clusters = fcluster(linked, k_seleccionado, criterion='maxclust')
 df_muestra = X.copy()
 df_muestra['Cluster_Jerarquico'] = clusters
 
-# ============================================================
-# 9. RESULTADOS
-# ============================================================
+# Resultados del clustering
 print("\n================================================")
 print("RESULTADOS DEL AGRUPAMIENTO JERÁRQUICO (MUESTRA)")
 print("================================================")
@@ -107,9 +89,7 @@ Variables:
 {X.columns.tolist()}
 """)
 
-# ============================================================
-# 10. GUARDAR RESULTADOS DE LA MUESTRA
-# ============================================================
+# Guardar el DataFrame con clusters
 nombre_salida = "muestra_con_clusters_jerarquico.csv"
 df_muestra.to_csv(nombre_salida, index=False)
 

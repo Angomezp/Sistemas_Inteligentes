@@ -3,9 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 
-# =========================================================
-# RUTAS
-# =========================================================
+# Paths
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 INPUT_CSV = os.path.join(
@@ -20,9 +18,7 @@ OUTPUT_CSV = os.path.join(
     "icfes_limpio.csv"
 )
 
-# =========================================================
-# COLUMNAS A UTILIZAR
-# =========================================================
+# Columnas a mantener
 COLUMNAS = [
     "ESTU_DEPTO_RESIDE",
     "ESTU_MCPIO_RESIDE",
@@ -49,16 +45,12 @@ COLUMNAS = [
     "PERCENTIL_GLOBAL"
 ]
 
-# =========================================================
-# CARGAR DATASET
-# =========================================================
+# Cargar dataset
 print("Cargando dataset...")
 
 df = pd.read_csv(INPUT_CSV)
 
-# =========================================================
-# FILTRAR COLUMNAS
-# =========================================================
+# Filtar columnas
 columnas_faltantes = [
     col for col in COLUMNAS
     if col not in df.columns
@@ -71,9 +63,7 @@ if columnas_faltantes:
 
 df = df[COLUMNAS].copy()
 
-# =========================================================
-# FAMI_ESTRATOVIVIENDA -> NUMÉRICO
-# =========================================================
+# Transformar estrato de categórico a numérico
 def transformar_estrato(valor):
 
     if pd.isna(valor):
@@ -96,9 +86,7 @@ df["FAMI_ESTRATOVIVIENDA"] = (
     .apply(transformar_estrato)
 )
 
-# =========================================================
-# SI / NO -> 1 / 0
-# =========================================================
+# Mapear "si"/"no" a 1/0
 MAP_SI_NO = {
     "si": 1,
     "sí": 1,
@@ -128,18 +116,14 @@ for col in df.columns:
             .map(MAP_SI_NO)
         )
 
-# =========================================================
-# TARGET POR QUINTILES
-# =========================================================
+# Crear target por quintiles del puntaje global
 df["target"] = pd.qcut(
     df["PUNT_GLOBAL"],
     q=5,
     labels=False
 )
 
-# =========================================================
-# CONVERSIÓN DE TIPOS
-# =========================================================
+# Convertir columnas numéricas a tipo numérico, dejando las no numéricas sin cambios
 df = df.apply(
     lambda col: pd.to_numeric(
         col,
@@ -147,27 +131,21 @@ df = df.apply(
     )
 )
 
-# =========================================================
-# FEATURES
-# =========================================================
+# Features: solo las que empiezan con FAMI_, COLE_ o ESTU_, excluyendo las que empiezan con PUNT_ o PERCENTIL_
 features = [
 
     col for col in df.columns
 
     if (
-
         col.startswith("FAMI_")
         or col.startswith("COLE_")
         or col.startswith("ESTU_")
-
     )
 ]
 
 X = df[features].copy()
 
-# =========================================================
-# COLUMNAS NUMÉRICAS Y CATEGÓRICAS
-# =========================================================
+# Columnas numéricas y categóricas
 num_cols = X.select_dtypes(
     include=["int64", "float64"]
 ).columns
@@ -176,9 +154,7 @@ cat_cols = X.select_dtypes(
     include=["object", "category"]
 ).columns
 
-# =========================================================
-# LIMPIEZA NUMÉRICAS
-# =========================================================
+# Limpieza numéricas
 for col in num_cols:
 
     X[col] = pd.to_numeric(
@@ -190,9 +166,7 @@ for col in num_cols:
         X[col].median()
     )
 
-# =========================================================
-# LIMPIEZA CATEGÓRICAS
-# =========================================================
+# Limpieza categóricas
 for col in cat_cols:
 
     X[col] = X[col].astype(str)
@@ -202,16 +176,12 @@ for col in cat_cols:
         "missing"
     )
 
-# =========================================================
-# RECONSTRUIR DATASET FINAL
-# =========================================================
+# Dataset final
 df_final = X.copy()
 
 df_final["target"] = df["target"]
 
-# =========================================================
-# GUARDAR
-# =========================================================
+# Guardar dataset limpio
 os.makedirs(
     os.path.dirname(OUTPUT_CSV),
     exist_ok=True

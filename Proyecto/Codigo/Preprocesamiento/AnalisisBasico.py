@@ -1,8 +1,6 @@
 import pandas as pd
 
-# =========================
-# Configuración
-# =========================
+# Configuración de rutas
 
 INPUT_CSV = "CSV/icfes_transformado.csv"
 #OUTPUT_STATS = "Resultados/Analisis_Basico/AnalisisBasico.txt"
@@ -11,9 +9,7 @@ OUTPUT_STATS = "Resultados/Analisis_Basico/AnalisisBasicoQuintiles.txt"
 COLUMNA = "PUNT_GLOBAL"
 
 
-# =========================
-# Función de categorización
-# =========================
+# Función para categorizar en 12 grupos de igual longitud 
 
 # def categorizar(x):
 #     x = float(x)
@@ -54,11 +50,7 @@ COLUMNA = "PUNT_GLOBAL"
 #     else:
 #         return 11
 
-
-# =========================
-# Lectura del dataset
-# =========================
-
+# leer el dataset
 df = pd.read_csv(INPUT_CSV)
 
 # Eliminar nulos en la columna de interés
@@ -68,9 +60,7 @@ df = df[df[COLUMNA].notna()].copy()
 df[COLUMNA] = pd.to_numeric(df[COLUMNA], errors="coerce")
 df = df[df[COLUMNA].notna()]
 
-# =========================
 # Estadísticas básicas
-# =========================
 
 stats = df[COLUMNA].describe()
 
@@ -79,9 +69,7 @@ varianza = df[COLUMNA].var()
 asimetria = df[COLUMNA].skew()
 curtosis = df[COLUMNA].kurt()
 
-# =========================
-# Categorización
-# =========================
+# Categorizar
 
 #df["CATEGORIA"] = df[COLUMNA].apply(categorizar)
 df["CATEGORIA"] = pd.qcut(
@@ -96,9 +84,7 @@ conteo_categorias = (
     .sort_index()
 )
 
-# =========================
-# Construir reporte
-# =========================
+# Generar reporte
 
 reporte = []
 
@@ -122,15 +108,11 @@ for categoria, cantidad in conteo_categorias.items():
 
 texto_reporte = "\n".join(reporte)
 
-# =========================
-# Mostrar en consola
-# =========================
+# Mostrar reporte en consola
 
 print(texto_reporte)
 
-# =========================
-# Guardar en archivo
-# =========================
+# Guardar reporte en archivo de texto
 
 with open(OUTPUT_STATS, "w", encoding="utf-8") as f:
     f.write(texto_reporte)

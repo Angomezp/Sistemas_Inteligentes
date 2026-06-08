@@ -8,22 +8,16 @@ import matplotlib.pyplot as plt
 import os
 
 
-# ============================================================
-# 1. CARGAR DATASET
-# ============================================================
+# Path
 DATA_PATH = "CSV/icfes_transformado.csv"
 df = pd.read_csv(DATA_PATH)
 
-# ============================================================
-# 2. SELECCIONAR COLUMNAS NUMÉRICAS Y LIMPIAR
-# ============================================================
+# Seleccionar solo las columnas numéricas para el clustering
 X = df.select_dtypes(include=[np.number]).dropna()
 
 X.info()  # Verificar número de filas y columnas después de limpiar
 
-# ============================================================
-# 3. MUESTREO PARA HACER FACTIBLES AMBOS MÉTODOS
-# ============================================================
+# Limitar el número de muestras para evitar problemas de memoria
 MAX_SAMPLES = 2_000_000   
 if len(X) > MAX_SAMPLES:
     print(f"Dataset original con {len(X)} filas. Se toma una muestra de {MAX_SAMPLES} para ambos análisis.")
@@ -31,15 +25,11 @@ if len(X) > MAX_SAMPLES:
 else:
     X_sample = X
 
-# ============================================================
-# 4. ESCALAMIENTO
-# ============================================================
+# Estandarizar los datos
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X_sample)
 
-# ============================================================
-# 6. K-MEANS CON GRÁFICA DEL CODO (INERCIA)
-# ============================================================
+# Graficas de codo para K-Means
 inercias = []
 k_range = range(1, min(15, len(X_sample)))   
 for k in k_range:
@@ -58,8 +48,7 @@ plt.savefig("Imagenes/KMeans_Codo.png", bbox_inches='tight', dpi=150)
 plt.show()
 plt.close()
 
-# (Opcional) Mostrar el punto de inflexión automático
-# Se puede calcular la diferencia de inercias para sugerir un k
+# Calcular la segunda derivada para sugerir un número de clusters
 diferencias = np.diff(inercias, 2)  # segunda derivada aproximada
 sugerido_k = np.argmin(diferencias) + 2 if len(diferencias) > 0 else 2
 print(f"Posible número de clusters según el codo de K-Means: {sugerido_k}")

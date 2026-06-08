@@ -25,40 +25,14 @@ from catboost import CatBoostClassifier
 
 sns.set(style="whitegrid")
 
-# =========================================================
-# RUTAS
-# =========================================================
+# Paths
 DATA_DIR = os.path.join("CSV", "icfes_transformado.csv")
 OUTPUT_DIR = os.path.join("Resultados", "CatBoost")
 
-# =========================================================
-# CARGAR DATA
-# =========================================================
+# Cargar dataset
 df = pd.read_csv(DATA_DIR)
 
-
-# =========================================================
-# CONVERSIÓN DE TIPOS
-# =========================================================
-df = df.apply(
-    lambda col: pd.to_numeric(
-        col,
-        errors="ignore"
-    )
-)
-
-# =========================================================
-# TARGET
-# =========================================================
-df["target"] = pd.qcut(
-    df["PUNT_GLOBAL"],
-    q=5,
-    labels=False
-)
-
-# =========================================================
-# FEATURES
-# =========================================================
+# Seleccionar solo las columnas relevantes
 features = [
 
     col for col in df.columns if (
@@ -80,13 +54,12 @@ features = [
     )
 ]
 
+# Variables predictoras y variable objetivo
 X = df[features].copy()
 
 y = df["target"].copy()
 
-# =========================================================
-# TIPOS
-# =========================================================
+# Identificar columnas categóricas y numéricas
 cat_cols = X.select_dtypes(
     include=["object", "category"]
 ).columns
@@ -95,45 +68,16 @@ num_cols = X.select_dtypes(
     include=["int64", "float64"]
 ).columns
 
-# =========================================================
-# LIMPIEZA
-# =========================================================
-for col in cat_cols:
-
-    X[col] = X[col].astype(str)
-
-    X[col] = X[col].replace(
-        "nan",
-        "missing"
-    )
-
-for col in num_cols:
-
-    X[col] = pd.to_numeric(
-        X[col],
-        errors="coerce"
-    )
-
-    X[col] = X[col].fillna(
-        X[col].median()
-    )
-
-# =========================================================
-# ÍNDICES DE VARIABLES CATEGÓRICAS
-# =========================================================
+# Índices de columnas categóricas para CatBoost
 cat_indices = [
     X.columns.get_loc(col)
     for col in cat_cols
 ]
 
-# =========================================================
-# SPLIT SOLO PARA EVALUACIÓN
-# =========================================================
+# Split en train y test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-# =========================================================
-# MODELO BASE
-# =========================================================
+# Modelo base
 cat_base = CatBoostClassifier(
 
     loss_function='MultiClass',
@@ -142,23 +86,17 @@ cat_base = CatBoostClassifier(
     verbose=0
 )
 
-# =========================================================
-# 4 SETS DE HIPERPARÁMETROS
-# =========================================================
+# Grid de hiperparámetros
 param_grid = [
 
-    # =====================================================
-    # SET 1
-    # =====================================================
+    # Set 1
     {
         "iterations": [100],
         "learning_rate": [0.05],
         "depth": [6],
         "l2_leaf_reg": [8]
     },
-    # =====================================================
-    # SET 2
-    # =====================================================
+    # Set 2
     {
         "iterations": [100],
         "learning_rate": [0.1],
@@ -166,9 +104,7 @@ param_grid = [
         "l2_leaf_reg": [3]
     },
 
-    # =====================================================
-    # SET 3
-    # =====================================================
+    # Set 3
     {
         "iterations": [150],
         "learning_rate": [0.05],
@@ -176,9 +112,7 @@ param_grid = [
         "l2_leaf_reg": [8]
     },
 
-    # =====================================================
-    # SET 4
-    # =====================================================
+    # Set 4
     {
         "iterations": [150],
         "learning_rate": [0.1],
@@ -187,18 +121,14 @@ param_grid = [
     }
 ]
 
-# =========================================================
-# TEN FOLD CROSS VALIDATION
-# =========================================================
+# Ten fold cross-validation
 cv = StratifiedKFold(
     n_splits=10,
     shuffle=True,
     random_state=42
 )
 
-# =========================================================
-# GRID SEARCH
-# =========================================================
+# GridSearch para encontrar los mejores hiperparámetros con Ten Fold Cross Validation
 grid_search = GridSearchCV(
     estimator=cat_base,
     param_grid=param_grid,
@@ -208,32 +138,24 @@ grid_search = GridSearchCV(
     verbose=2
 )
 
-# =========================================================
-# ENTRENAMIENTO
-# =========================================================
+# Entrenamiento y validación con GridSearchCV
 start = time.time()
 grid_search.fit(X_train, y_train, cat_features=cat_indices)
 end = time.time()
 
-# =========================================================
-# MEJORES PARÁMETROS
-# =========================================================
+# Exponer mejores parametros
 print("\nMEJORES PARÁMETROS:\n")
 
 print(grid_search.best_params_)
 
 best_model = grid_search.best_estimator_
 
-# =========================================================
-# PREDICCIONES
-# =========================================================
+# Predicciones
 y_pred = best_model.predict(X_test)
 
 y_proba = best_model.predict_proba(X_test)
 
-# =========================================================
-# MÉTRICAS
-# =========================================================
+# Calcular métricas
 results = {
     "Modelo": "CatBoost",
 
@@ -269,26 +191,18 @@ results = {
     "Tiempo": end - start
 }
 
-# =========================================================
-# MOSTRAR RESULTADOS
-# =========================================================
+# Resultados
 print("\nRESULTADOS:\n")
 
 print(results)
 
-# =========================================================
-# MATRIZ DE CONFUSIÓN
-# =========================================================
+# Matriz de confusión
 cm = confusion_matrix(y_test, y_pred)
 
-# =========================================================
-# CREAR CARPETA
-# =========================================================
+# Asegurar que el directorio de salida existe
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# =========================================================
-# HEATMAP
-# =========================================================
+# Visualizar y guardar matriz de confusión
 plt.figure(figsize=(8,6))
 
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
@@ -302,29 +216,17 @@ plt.ylabel("Real")
 plt.savefig(os.path.join(OUTPUT_DIR,"catboost_confusion.png"), bbox_inches='tight', dpi=150)
 plt.close()
 
-# =========================================================
-# EXPORTAR MÉTRICAS
-# =========================================================
+# Exportar datos
 pd.DataFrame([results]).to_csv(os.path.join(OUTPUT_DIR, "catboost_metrics.csv"), index=False)
 
-# =========================================================
-# EXPORTAR MATRIZ
-# =========================================================
 pd.DataFrame(cm).to_csv( os.path.join(OUTPUT_DIR, "catboost_confusion.csv"), index=False)
 
-# =========================================================
-# EXPORTAR MEJORES HIPERPARÁMETROS
-# =========================================================
 pd.DataFrame([grid_search.best_params_]).to_csv( os.path.join( OUTPUT_DIR, "catboost_best_params.csv"), index=False)
 
-# =========================================================
-# REENTRENAR CON TODO EL DATASET
-# =========================================================
+# Reentrenar el modelo final con los mejores hiperparámetros en todo el conjunto de datos
 final_model = best_model.fit(X, y, cat_features=cat_indices)
 
-# =========================================================
-# FINAL
-# =========================================================
+# Exportar el modelo final
 
 joblib.dump(final_model, os.path.join(OUTPUT_DIR, "catboost_final_model.pkl"))
 
