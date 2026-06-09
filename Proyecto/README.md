@@ -18,6 +18,7 @@ Estructura y propósito
 - `Resultados/`: outputs y métricas por modelo (subcarpetas por método)
 - `Proyecto_3-Reporte.pdf`: Reporte final del proyecto.
 - `Proyecto_3-Tablas.pdf`: Tablas y gráficas. (Mejor visualización)
+- `Proyecto_3-Diapositivas.pdf`: Diapositivas del video. (Completas)
 
 Requisitos
 - Python 3.8+ (probado con 3.13 en este entorno)
