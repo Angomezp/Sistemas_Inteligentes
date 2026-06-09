@@ -3,8 +3,8 @@ import pandas as pd
 # Configuración de rutas
 
 INPUT_CSV = "CSV/icfes_transformado.csv"
-#OUTPUT_STATS = "Resultados/Analisis_Basico/AnalisisBasico.txt"
-OUTPUT_STATS = "Resultados/Analisis_Basico/AnalisisBasicoQuintiles.txt"
+#OUTPUT_STATS = "Resultados/Analisis_Basico/AnalisisBasico_12Grupos.txt"
+OUTPUT_STATS = "Resultados/Analisis_Basico/AnalisisBasico_Quintiles.txt"
 
 COLUMNA = "PUNT_GLOBAL"
 

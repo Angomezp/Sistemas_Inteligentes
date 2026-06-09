@@ -4,19 +4,12 @@ import numpy as np
 import pandas as pd
 
 # Paths
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+# La carpeta CSV está en el nivel de `Proyecto/CSV`, dos niveles arriba de este archivo
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-INPUT_CSV = os.path.join(
-    BASE_DIR,
-    "CSV",
-    "icfes_original.csv"
-)
+INPUT_CSV = os.path.join(BASE_DIR, "CSV", "icfes_original.csv")
 
-OUTPUT_CSV = os.path.join(
-    BASE_DIR,
-    "CSV",
-    "icfes_limpio.csv"
-)
+OUTPUT_CSV = os.path.join(BASE_DIR, "CSV", "icfes_transformado.csv")
 
 # Columnas a mantener
 COLUMNAS = [
