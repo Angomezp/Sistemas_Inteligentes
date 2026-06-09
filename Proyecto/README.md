@@ -16,6 +16,8 @@ Estructura y propósito
     - `clusters.py`, `K-means.py`: scripts de clustering y pruebas de k-means
 - `Imagenes/`: imágenes usadas en análisis o reports
 - `Resultados/`: outputs y métricas por modelo (subcarpetas por método)
+- `Proyecto_3-Reporte.pdf`: Reporte final del proyecto.
+- `Proyecto_3-Tablas.pdf`: Tablas y gráficas. (Mejor visualización)
 
 Requisitos
 - Python 3.8+ (probado con 3.13 en este entorno)
